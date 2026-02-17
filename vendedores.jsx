@@ -16,148 +16,146 @@ const CICLOS = [
 
 const VENDORS_CONFIG = {
   sabado: [
-    { name: "Juan L", com: 10 },
-    { name: "Toto M", com: 10 },
-    { name: "Nacho Zava", com: 12 },
-    { name: "Fio H", com: 10 },
-    { name: "Martu P", com: 10 },
-    { name: "Sofi R", com: 10 },
-    { name: "Nico B", com: 8 },
-    { name: "Valen G", com: 10 },
-    { name: "Facu D", com: 10 },
-    { name: "Cami S", com: 10 },
-    { name: "Agus T", com: 8 },
-    { name: "Mili R", com: 10 }
+    { name: "Jose Calvo", com: 10 },
+    { name: "Juli Radicula", com: 10 },
+    { name: "Martu Beisel", com: 10 },
+    { name: "Martupe", com: 10 },
+    { name: "Palo Pinson", com: 10 },
+    { name: "Tute Merlo", com: 10 },
+    { name: "Valen V\u00e1zquez", com: 10 },
+    { name: "Cata Pereyra", com: 10 },
+    { name: "Fiore Scarlata", com: 8 },
+    { name: "Juli Garc\u00eda", com: 8 },
+    { name: "Juli Mansilla", com: 8 },
+    { name: "Juli Sobre", com: 8 },
+    { name: "Luz Campillo", com: 8 },
+    { name: "Martu Riobo", com: 8 },
+    { name: "Maxima Calvo", com: 8 },
+    { name: "Mia Minan", com: 8 },
+    { name: "Milu Cortes", com: 8 },
+    { name: "Mora Coghlan", com: 8 },
+    { name: "Mori Iglesias", com: 8 },
+    { name: "Sere Reber", com: 8 },
+    { name: "Sofi Rodriguez", com: 8 },
+    { name: "Clara Sanmarco", com: 8 },
+    { name: "Avru Cooke", com: 6 },
+    { name: "Fiona Herrera", com: 6 },
+    { name: "Lola Marasa", com: 6 },
+    { name: "Martu Sal\u00f3mon", com: 6 },
+    { name: "Sol Vidal", com: 6 },
+    { name: "Cami Vidalle", com: 6 },
+    { name: "Guada Fuscile", com: 6 },
+    { name: "Cami Varni", com: 8 },
+    { name: "Delfi V\u00e1zquez", com: 8 },
+    { name: "Cande Torres", com: 8 },
+    { name: "Cony Carbone", com: 8 },
+    { name: "Flor Sandr\u00edn", com: 8 },
+    { name: "Lara Cano", com: 8 },
+    { name: "Ori la Torre", com: 8 },
+    { name: "Fede Guelman", com: 10 },
+    { name: "Juli S\u00e1nchez Parra", com: 10 },
+    { name: "Liam Gianle", com: 10 },
+    { name: "Mateo Somovilla", com: 10 },
+    { name: "Nico Ruegg", com: 10 },
+    { name: "Toto Tasistro", com: 10 },
+    { name: "Valen de Santo", com: 10 },
+    { name: "Zava", com: 10 },
+    { name: "Zurdo", com: 10 }
   ],
   viernes: [
-    { name: "Martu P", com: 10 },
-    { name: "Sofi R", com: 10 },
-    { name: "Nico B", com: 8 },
-    { name: "Cami S", com: 10 },
-    { name: "Lau M", com: 10 },
-    { name: "Tomi F", com: 10 },
-    { name: "Belu A", com: 10 },
-    { name: "Fran K", com: 8 },
-    { name: "Dani V", com: 10 },
-    { name: "Juli C", com: 10 }
+    { name: "Cata Alonso", com: 10 },
+    { name: "Emma Spicia", com: 10 },
+    { name: "Mati Catella", com: 10 },
+    { name: "Mati Ocampo", com: 10 },
+    { name: "Santi Barbieri", com: 10 },
+    { name: "Charo Hormachea", com: 8 },
+    { name: "Delfi Pugliese", com: 8 },
+    { name: "Feli Barbieri", com: 8 },
+    { name: "Jere S\u00e1nchez", com: 8 },
+    { name: "Male Valdez", com: 8 },
+    { name: "Mate Vasquenz", com: 8 },
+    { name: "Nacho Lupacchini", com: 8 },
+    { name: "Santi R\u00edos", com: 8 },
+    { name: "Vicky Belloto", com: 8 },
+    { name: "Mori Carfachis", com: 8 },
+    { name: "Mati Reina", com: 6 },
+    { name: "Pili Burati", com: 6 },
+    { name: "Maga Bian", com: 6 },
+    { name: "Jazm\u00edn Rebello", com: 6 },
+    { name: "Jose Fern\u00e1ndez", com: 6 },
+    { name: "Sophie Mayer", com: 6 },
+    { name: "Renata Giordano", com: 6 },
+    { name: "Mora Mauro", com: 6 },
+    { name: "Cami Bellisimo", com: 6 },
+    { name: "Joaqu\u00edn Gassman", com: 6 },
+    { name: "Uma Streich", com: 6 },
+    { name: "Juana Moreno", com: 6 },
+    { name: "Delfi Bujan", com: 6 },
+    { name: "Mate Morrone", com: 6 },
+    { name: "Beni Silva", com: 6 }
   ],
   master: [
-    { name: "Juan L", com: 10 },
-    { name: "Nacho Zava", com: 12 },
-    { name: "Fio H", com: 10 },
-    { name: "Valen G", com: 10 },
-    { name: "Facu D", com: 10 },
-    { name: "Agus T", com: 8 },
-    { name: "Lau M", com: 10 },
-    { name: "Tomi F", com: 10 },
-    { name: "Fran K", com: 8 },
-    { name: "Romi G", com: 10 },
-    { name: "Santi P", com: 12 }
+    { name: "Agus Aggi", com: 10 },
+    { name: "Juli Vicino", com: 10 },
+    { name: "Mar Barrucci", com: 10 },
+    { name: "Vicky Loschi", com: 10 },
+    { name: "Vicky Otero", com: 10 },
+    { name: "Tato Rossi", com: 10 },
+    { name: "Marcos M\u00fcller", com: 10 },
+    { name: "Joaco Alcetegaray", com: 10 },
+    { name: "Feli Dieguez", com: 10 },
+    { name: "Agust\u00edn Pusi", com: 10 }
   ]
 };
 
 const EVENTS = [
   {
-    id: "ev1", cycle: "sabado", date: "2026-03-07",
+    id: "SAB-001", cycle: "sabado", date: "2026-03-07",
     vendorSales: [
-      { vendedor: "Juan L", mesas: 4, monto: 950000, clientes: 24, cobrado: true },
-      { vendedor: "Toto M", mesas: 3, monto: 750000, clientes: 18, cobrado: true },
-      { vendedor: "Nacho Zava", mesas: 5, monto: 1200000, clientes: 30, cobrado: false },
-      { vendedor: "Fio H", mesas: 3, monto: 650000, clientes: 16, cobrado: true },
-      { vendedor: "Martu P", mesas: 4, monto: 850000, clientes: 22, cobrado: true },
-      { vendedor: "Sofi R", mesas: 3, monto: 700000, clientes: 18, cobrado: false },
-      { vendedor: "Nico B", mesas: 2, monto: 480000, clientes: 12, cobrado: true },
-      { vendedor: "Valen G", mesas: 3, monto: 720000, clientes: 19, cobrado: true }
+      { vendedor: "Jose Calvo", mesas: 4, monto: 1200000, clientes: 30, cobrado: true },
+      { vendedor: "Juli Radicula", mesas: 3, monto: 950000, clientes: 24, cobrado: true },
+      { vendedor: "Martu Beisel", mesas: 4, monto: 1100000, clientes: 28, cobrado: true },
+      { vendedor: "Martupe", mesas: 2, monto: 750000, clientes: 19, cobrado: false },
+      { vendedor: "Tute Merlo", mesas: 3, monto: 900000, clientes: 23, cobrado: true },
+      { vendedor: "Fiore Scarlata", mesas: 2, monto: 650000, clientes: 16, cobrado: true },
+      { vendedor: "Fede Guelman", mesas: 4, monto: 1150000, clientes: 29, cobrado: true },
+      { vendedor: "Juli S\u00e1nchez Parra", mesas: 3, monto: 850000, clientes: 21, cobrado: false }
     ]
   },
   {
-    id: "ev2", cycle: "viernes", date: "2026-03-13",
+    id: "SAB-002", cycle: "sabado", date: "2026-03-14",
     vendorSales: [
-      { vendedor: "Martu P", mesas: 3, monto: 650000, clientes: 16, cobrado: true },
-      { vendedor: "Sofi R", mesas: 2, monto: 520000, clientes: 13, cobrado: true },
-      { vendedor: "Nico B", mesas: 2, monto: 450000, clientes: 11, cobrado: false },
-      { vendedor: "Cami S", mesas: 4, monto: 900000, clientes: 23, cobrado: true },
-      { vendedor: "Lau M", mesas: 3, monto: 680000, clientes: 17, cobrado: true },
-      { vendedor: "Tomi F", mesas: 2, monto: 520000, clientes: 13, cobrado: true }
+      { vendedor: "Palo Pinson", mesas: 3, monto: 950000, clientes: 24, cobrado: true },
+      { vendedor: "Valen V\u00e1zquez", mesas: 4, monto: 1250000, clientes: 31, cobrado: true },
+      { vendedor: "Cata Pereyra", mesas: 2, monto: 700000, clientes: 18, cobrado: true },
+      { vendedor: "Juli Mansilla", mesas: 2, monto: 650000, clientes: 16, cobrado: true },
+      { vendedor: "Liam Gianle", mesas: 4, monto: 1100000, clientes: 27, cobrado: true },
+      { vendedor: "Mateo Somovilla", mesas: 3, monto: 900000, clientes: 22, cobrado: false },
+      { vendedor: "Zava", mesas: 4, monto: 1300000, clientes: 33, cobrado: true }
     ]
   },
   {
-    id: "ev3", cycle: "master", date: "2026-03-21",
+    id: "VIE-001", cycle: "viernes", date: "2026-03-06",
     vendorSales: [
-      { vendedor: "Juan L", mesas: 5, monto: 1100000, clientes: 28, cobrado: true },
-      { vendedor: "Nacho Zava", mesas: 6, monto: 1400000, clientes: 35, cobrado: true },
-      { vendedor: "Fio H", mesas: 4, monto: 900000, clientes: 23, cobrado: false },
-      { vendedor: "Valen G", mesas: 4, monto: 850000, clientes: 22, cobrado: true },
-      { vendedor: "Facu D", mesas: 3, monto: 720000, clientes: 18, cobrado: true },
-      { vendedor: "Agus T", mesas: 3, monto: 620000, clientes: 16, cobrado: false },
-      { vendedor: "Lau M", mesas: 4, monto: 880000, clientes: 22, cobrado: true },
-      { vendedor: "Tomi F", mesas: 3, monto: 750000, clientes: 19, cobrado: true },
-      { vendedor: "Fran K", mesas: 2, monto: 520000, clientes: 13, cobrado: true }
+      { vendedor: "Cata Alonso", mesas: 3, monto: 850000, clientes: 21, cobrado: true },
+      { vendedor: "Emma Spicia", mesas: 3, monto: 900000, clientes: 23, cobrado: true },
+      { vendedor: "Mati Catella", mesas: 2, monto: 650000, clientes: 16, cobrado: false },
+      { vendedor: "Charo Hormachea", mesas: 2, monto: 600000, clientes: 15, cobrado: true },
+      { vendedor: "Delfi Pugliese", mesas: 2, monto: 750000, clientes: 19, cobrado: true },
+      { vendedor: "Jere S\u00e1nchez", mesas: 3, monto: 820000, clientes: 20, cobrado: true },
+      { vendedor: "Mati Reina", mesas: 1, monto: 400000, clientes: 10, cobrado: true }
     ]
   },
   {
-    id: "ev4", cycle: "sabado", date: "2026-03-28",
+    id: "MAS-001", cycle: "master", date: "2026-03-08",
     vendorSales: [
-      { vendedor: "Juan L", mesas: 3, monto: 700000, clientes: 18, cobrado: false },
-      { vendedor: "Toto M", mesas: 4, monto: 920000, clientes: 23, cobrado: true },
-      { vendedor: "Nacho Zava", mesas: 4, monto: 950000, clientes: 24, cobrado: true },
-      { vendedor: "Fio H", mesas: 4, monto: 800000, clientes: 20, cobrado: true },
-      { vendedor: "Martu P", mesas: 3, monto: 680000, clientes: 17, cobrado: true },
-      { vendedor: "Valen G", mesas: 4, monto: 900000, clientes: 23, cobrado: true },
-      { vendedor: "Facu D", mesas: 3, monto: 750000, clientes: 19, cobrado: false },
-      { vendedor: "Cami S", mesas: 3, monto: 720000, clientes: 18, cobrado: true },
-      { vendedor: "Agus T", mesas: 2, monto: 500000, clientes: 13, cobrado: true }
-    ]
-  },
-  {
-    id: "ev5", cycle: "viernes", date: "2026-04-03",
-    vendorSales: [
-      { vendedor: "Martu P", mesas: 2, monto: 480000, clientes: 12, cobrado: true },
-      { vendedor: "Sofi R", mesas: 3, monto: 650000, clientes: 16, cobrado: true },
-      { vendedor: "Cami S", mesas: 3, monto: 700000, clientes: 18, cobrado: false },
-      { vendedor: "Lau M", mesas: 4, monto: 850000, clientes: 21, cobrado: true },
-      { vendedor: "Tomi F", mesas: 3, monto: 680000, clientes: 17, cobrado: true },
-      { vendedor: "Belu A", mesas: 2, monto: 520000, clientes: 13, cobrado: true },
-      { vendedor: "Dani V", mesas: 2, monto: 450000, clientes: 11, cobrado: false }
-    ]
-  },
-  {
-    id: "ev6", cycle: "sabado", date: "2026-04-11",
-    vendorSales: [
-      { vendedor: "Juan L", mesas: 3, monto: 720000, clientes: 18, cobrado: true },
-      { vendedor: "Toto M", mesas: 2, monto: 550000, clientes: 14, cobrado: true },
-      { vendedor: "Nacho Zava", mesas: 4, monto: 950000, clientes: 24, cobrado: true },
-      { vendedor: "Fio H", mesas: 3, monto: 680000, clientes: 17, cobrado: false },
-      { vendedor: "Sofi R", mesas: 2, monto: 520000, clientes: 13, cobrado: true },
-      { vendedor: "Nico B", mesas: 3, monto: 680000, clientes: 17, cobrado: true },
-      { vendedor: "Valen G", mesas: 4, monto: 920000, clientes: 23, cobrado: true },
-      { vendedor: "Facu D", mesas: 3, monto: 750000, clientes: 19, cobrado: true },
-      { vendedor: "Cami S", mesas: 4, monto: 880000, clientes: 22, cobrado: false },
-      { vendedor: "Mili R", mesas: 2, monto: 500000, clientes: 13, cobrado: true }
-    ]
-  },
-  {
-    id: "ev7", cycle: "master", date: "2026-04-18",
-    vendorSales: [
-      { vendedor: "Juan L", mesas: 4, monto: 900000, clientes: 23, cobrado: true },
-      { vendedor: "Nacho Zava", mesas: 5, monto: 1300000, clientes: 33, cobrado: true },
-      { vendedor: "Fio H", mesas: 3, monto: 750000, clientes: 19, cobrado: true },
-      { vendedor: "Valen G", mesas: 3, monto: 720000, clientes: 18, cobrado: false },
-      { vendedor: "Facu D", mesas: 4, monto: 850000, clientes: 21, cobrado: true },
-      { vendedor: "Agus T", mesas: 2, monto: 550000, clientes: 14, cobrado: true },
-      { vendedor: "Romi G", mesas: 3, monto: 700000, clientes: 18, cobrado: true },
-      { vendedor: "Santi P", mesas: 4, monto: 900000, clientes: 23, cobrado: false }
-    ]
-  },
-  {
-    id: "ev8", cycle: "viernes", date: "2026-04-25",
-    vendorSales: [
-      { vendedor: "Martu P", mesas: 2, monto: 520000, clientes: 13, cobrado: true },
-      { vendedor: "Sofi R", mesas: 2, monto: 480000, clientes: 12, cobrado: true },
-      { vendedor: "Cami S", mesas: 3, monto: 750000, clientes: 19, cobrado: true },
-      { vendedor: "Lau M", mesas: 3, monto: 700000, clientes: 18, cobrado: false },
-      { vendedor: "Tomi F", mesas: 2, monto: 520000, clientes: 13, cobrado: true },
-      { vendedor: "Fran K", mesas: 2, monto: 480000, clientes: 12, cobrado: true }
+      { vendedor: "Agus Aggi", mesas: 4, monto: 1200000, clientes: 30, cobrado: true },
+      { vendedor: "Juli Vicino", mesas: 5, monto: 1400000, clientes: 35, cobrado: true },
+      { vendedor: "Mar Barrucci", mesas: 3, monto: 900000, clientes: 23, cobrado: true },
+      { vendedor: "Vicky Loschi", mesas: 4, monto: 1100000, clientes: 27, cobrado: false },
+      { vendedor: "Tato Rossi", mesas: 3, monto: 950000, clientes: 24, cobrado: true },
+      { vendedor: "Marcos M\u00fcller", mesas: 4, monto: 1150000, clientes: 29, cobrado: true },
+      { vendedor: "Feli Dieguez", mesas: 3, monto: 850000, clientes: 21, cobrado: true }
     ]
   }
 ];

@@ -108,68 +108,88 @@ const Table = ({ columns, rows }) => (
 );
 
 const CATEGORIAS = [
-  { id:"vodka", label:"Vodka", color: C.b },
-  { id:"fernet", label:"Fernet", color: C.g },
+  { id:"bebidas", label:"Bebidas", color: C.b },
+  { id:"espumantes", label:"Espumantes", color: C.p },
   { id:"whisky", label:"Whisky", color: C.y },
-  { id:"gin", label:"Gin", color: C.v },
-  { id:"ron", label:"Ron", color: C.o },
-  { id:"tequila", label:"Tequila", color: C.r },
-  { id:"champagne", label:"Champagne/Espumante", color: C.p },
-  { id:"cerveza", label:"Cerveza", color: C.y },
-  { id:"energizante", label:"Energizantes", color: C.g },
-  { id:"soft", label:"Gaseosas/Agua", color: C.b },
-  { id:"otros", label:"Otros", color: C.t2 }
+  { id:"vodka", label:"Vodka", color: C.b },
+  { id:"destilados", label:"Destilados", color: C.o },
+  { id:"tragos", label:"Tragos", color: C.v },
+  { id:"champagne", label:"Champagne", color: C.p },
+  { id:"combos", label:"Combos", color: C.g }
 ];
 
 const PRODUCTOS_INICIAL = [
-  // Vodka
-  { id:"vodka_smirnoff", name:"Smirnoff 750ml", category:"vodka", unit:"botella", costUnit:8500, salePrice:45000, rendimiento:1, parStock:8, currentStock:12 },
-  { id:"vodka_absolut", name:"Absolut 750ml", category:"vodka", unit:"botella", costUnit:15000, salePrice:65000, rendimiento:1, parStock:6, currentStock:9 },
-  { id:"vodka_greygoose", name:"Grey Goose 750ml", category:"vodka", unit:"botella", costUnit:35000, salePrice:120000, rendimiento:1, parStock:4, currentStock:5 },
-  // Fernet
-  { id:"fernet_branca", name:"Fernet Branca 750ml", category:"fernet", unit:"botella", costUnit:7500, salePrice:40000, rendimiento:1, parStock:10, currentStock:14 },
-  { id:"fernet_1882", name:"Fernet 1882 750ml", category:"fernet", unit:"botella", costUnit:5500, salePrice:32000, rendimiento:1, parStock:12, currentStock:16 },
-  // Whisky
-  { id:"whisky_jwred", name:"Johnnie Walker Red 750ml", category:"whisky", unit:"botella", costUnit:12000, salePrice:55000, rendimiento:1, parStock:6, currentStock:8 },
-  { id:"whisky_jwblack", name:"Johnnie Walker Black 750ml", category:"whisky", unit:"botella", costUnit:22000, salePrice:85000, rendimiento:1, parStock:4, currentStock:6 },
-  { id:"whisky_jackdaniels", name:"Jack Daniels 750ml", category:"whisky", unit:"botella", costUnit:18000, salePrice:70000, rendimiento:1, parStock:5, currentStock:7 },
-  // Gin
-  { id:"gin_bombay", name:"Bombay Sapphire 750ml", category:"gin", unit:"botella", costUnit:16000, salePrice:65000, rendimiento:1, parStock:5, currentStock:7 },
-  { id:"gin_beefeater", name:"Beefeater 750ml", category:"gin", unit:"botella", costUnit:12000, salePrice:55000, rendimiento:1, parStock:6, currentStock:8 },
-  { id:"gin_tanqueray", name:"Tanqueray 750ml", category:"gin", unit:"botella", costUnit:18000, salePrice:72000, rendimiento:1, parStock:5, currentStock:6 },
-  // Ron
-  { id:"ron_havana3", name:"Havana Club 3 A\u00f1os 750ml", category:"ron", unit:"botella", costUnit:9000, salePrice:42000, rendimiento:1, parStock:8, currentStock:11 },
-  { id:"ron_bacardi", name:"Bacardi 750ml", category:"ron", unit:"botella", costUnit:8000, salePrice:38000, rendimiento:1, parStock:9, currentStock:13 },
-  // Tequila
-  { id:"tequila_cuervo", name:"Jos\u00e9 Cuervo 750ml", category:"tequila", unit:"botella", costUnit:12000, salePrice:50000, rendimiento:1, parStock:5, currentStock:7 },
-  { id:"tequila_jimador", name:"Jimador 750ml", category:"tequila", unit:"botella", costUnit:14000, salePrice:55000, rendimiento:1, parStock:5, currentStock:6 },
-  // Champagne/Espumante
-  { id:"champagne_chandon", name:"Chandon Cl\u00e1sico 750ml", category:"champagne", unit:"botella", costUnit:8000, salePrice:45000, rendimiento:1, parStock:6, currentStock:8 },
-  { id:"champagne_moet", name:"Mo\u00ebt & Chandon 750ml", category:"champagne", unit:"botella", costUnit:45000, salePrice:180000, rendimiento:1, parStock:2, currentStock:3 },
-  { id:"champagne_baronb", name:"Bar\u00f3n B. Extra Brut 750ml", category:"champagne", unit:"botella", costUnit:15000, salePrice:75000, rendimiento:1, parStock:5, currentStock:7 },
-  // Cerveza
-  { id:"cerveza_stella_lata", name:"Stella Artois Lata 473ml", category:"cerveza", unit:"lata", costUnit:1200, salePrice:5000, rendimiento:1, parStock:80, currentStock:120 },
-  { id:"cerveza_corona_botella", name:"Corona Botella 355ml", category:"cerveza", unit:"botella", costUnit:1800, salePrice:6500, rendimiento:1, parStock:60, currentStock:90 },
-  { id:"cerveza_miller_lata", name:"Miller Lata 473ml", category:"cerveza", unit:"lata", costUnit:1000, salePrice:4500, rendimiento:1, parStock:100, currentStock:150 },
-  { id:"cerveza_heineken_lata", name:"Heineken Lata 473ml", category:"cerveza", unit:"lata", costUnit:1400, salePrice:5500, rendimiento:1, parStock:80, currentStock:110 },
-  { id:"cerveza_tirada", name:"Tirada Barril 50L", category:"cerveza", unit:"barril", costUnit:35000, salePrice:3500, rendimiento:100, parStock:1, currentStock:2 },
-  // Energizantes
-  { id:"energizante_redbull", name:"Red Bull 250ml", category:"energizante", unit:"lata", costUnit:2500, salePrice:6000, rendimiento:1, parStock:60, currentStock:85 },
-  { id:"energizante_speed", name:"Speed 250ml", category:"energizante", unit:"lata", costUnit:1500, salePrice:4000, rendimiento:1, parStock:70, currentStock:100 },
-  // Soft
-  { id:"soft_coca", name:"Coca Cola 2.25L", category:"soft", unit:"botella", costUnit:2500, salePrice:8000, rendimiento:6, parStock:8, currentStock:12 },
-  { id:"soft_sprite", name:"Sprite 2.25L", category:"soft", unit:"botella", costUnit:2500, salePrice:8000, rendimiento:6, parStock:8, currentStock:10 },
-  { id:"soft_agua", name:"Agua Mineral 500ml", category:"soft", unit:"unidad", costUnit:500, salePrice:3000, rendimiento:1, parStock:100, currentStock:150 },
-  { id:"soft_tonica", name:"T\u00f3nica Schweppes 200ml", category:"soft", unit:"lata", costUnit:1500, salePrice:5000, rendimiento:1, parStock:40, currentStock:60 },
-  // Otros
-  { id:"otros_aperol", name:"Aperol 750ml", category:"otros", unit:"botella", costUnit:10000, salePrice:48000, rendimiento:1, parStock:4, currentStock:5 },
-  { id:"otros_campari", name:"Campari 750ml", category:"otros", unit:"botella", costUnit:9000, salePrice:45000, rendimiento:1, parStock:4, currentStock:6 },
-  { id:"otros_jagermeister", name:"J\u00e4germeister 750ml", category:"otros", unit:"botella", costUnit:11000, salePrice:50000, rendimiento:1, parStock:4, currentStock:5 },
-  { id:"otros_baileys", name:"Bailey's 750ml", category:"otros", unit:"botella", costUnit:14000, salePrice:60000, rendimiento:1, parStock:3, currentStock:4 },
-  { id:"otros_gancia", name:"Gancia 750ml", category:"otros", unit:"botella", costUnit:5000, salePrice:28000, rendimiento:1, parStock:6, currentStock:8 },
-  { id:"otros_cynar", name:"Cynar 750ml", category:"otros", unit:"botella", costUnit:6000, salePrice:32000, rendimiento:1, parStock:5, currentStock:7 },
-  { id:"otros_hesperidina", name:"Hesperidina 750ml", category:"otros", unit:"botella", costUnit:4500, salePrice:24000, rendimiento:1, parStock:6, currentStock:9 },
-  { id:"otros_malibu", name:"Malibu 750ml", category:"otros", unit:"botella", costUnit:13000, salePrice:55000, rendimiento:1, parStock:3, currentStock:4 },
+  // BEBIDAS
+  { id:"gaseosa", name:"Gaseosa", category:"bebidas", unit:"Unidad", costUnit:990, salePrice:6000, rendimiento:6.1, parStock:20, currentStock:30 },
+  { id:"speed", name:"Speed", category:"bebidas", unit:"Unidad", costUnit:970, salePrice:6000, rendimiento:6.2, parStock:20, currentStock:30 },
+  { id:"agua", name:"Agua", category:"bebidas", unit:"Unidad", costUnit:950, salePrice:6000, rendimiento:6.3, parStock:25, currentStock:40 },
+  { id:"miller", name:"Miller", category:"bebidas", unit:"Unidad", costUnit:1476, salePrice:8000, rendimiento:5.4, parStock:30, currentStock:50 },
+  { id:"speed_pack_x6", name:"Speed Pack x6", category:"bebidas", unit:"Pack x6", costUnit:5820, salePrice:30000, rendimiento:5.2, parStock:5, currentStock:8 },
+  { id:"gaseosas_pack_x6", name:"Gaseosas Pack x6", category:"bebidas", unit:"Pack x6", costUnit:5940, salePrice:30000, rendimiento:5.1, parStock:5, currentStock:8 },
+
+  // ESPUMANTES
+  { id:"liason_botella", name:"Liason Botella", category:"espumantes", unit:"Botella", costUnit:12820, salePrice:60000, rendimiento:4.7, parStock:3, currentStock:5 },
+  { id:"chandon_delice", name:"Chandon Delice", category:"espumantes", unit:"Botella", costUnit:26276, salePrice:100000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"chandon_eb", name:"Chandon EB", category:"espumantes", unit:"Botella", costUnit:26276, salePrice:100000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"chandon_rose", name:"Chandon Rose", category:"espumantes", unit:"Botella", costUnit:26276, salePrice:100000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"chandon_aperitif", name:"Chandon Aperitif", category:"espumantes", unit:"Botella", costUnit:26276, salePrice:100000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"liason_magnum", name:"Liason Magnum", category:"espumantes", unit:"Magnum", costUnit:10880, salePrice:180000, rendimiento:16.5, parStock:1, currentStock:2 },
+  { id:"baron_b_eb", name:"Baron B EB", category:"espumantes", unit:"Botella", costUnit:37203, salePrice:140000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"baron_b_rose", name:"Baron B Rose", category:"espumantes", unit:"Botella", costUnit:37203, salePrice:140000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"baron_b_nature", name:"Baron B Nature", category:"espumantes", unit:"Botella", costUnit:37203, salePrice:140000, rendimiento:3.8, parStock:2, currentStock:3 },
+  { id:"chandon_magnum", name:"Chandon Magnum", category:"espumantes", unit:"Magnum", costUnit:40935, salePrice:180000, rendimiento:4.4, parStock:1, currentStock:2 },
+
+  // WHISKY
+  { id:"jw_red_label", name:"JW Red Label", category:"whisky", unit:"Botella", costUnit:28001, salePrice:220000, rendimiento:7.9, parStock:2, currentStock:3 },
+  { id:"jw_black_label", name:"JW Black Label", category:"whisky", unit:"Botella", costUnit:44493, salePrice:280000, rendimiento:6.3, parStock:2, currentStock:3 },
+  { id:"jw_gold_label", name:"JW Gold Label", category:"whisky", unit:"Botella", costUnit:189572, salePrice:400000, rendimiento:2.1, parStock:1, currentStock:1 },
+  { id:"the_macallan", name:"The Macallan", category:"whisky", unit:"Show Botella", costUnit:199480, salePrice:1100000, rendimiento:5.5, parStock:1, currentStock:1 },
+  { id:"jw_blue_label", name:"JW Blue Label", category:"whisky", unit:"Show Botella", costUnit:350625, salePrice:1800000, rendimiento:5.1, parStock:1, currentStock:1 },
+
+  // VODKA
+  { id:"sernova", name:"Sernova", category:"vodka", unit:"Botella", costUnit:11729, salePrice:120000, rendimiento:10.2, parStock:3, currentStock:5 },
+  { id:"sernova_sab", name:"Sernova SAB", category:"vodka", unit:"Botella", costUnit:11729, salePrice:120000, rendimiento:10.2, parStock:3, currentStock:5 },
+  { id:"absolut", name:"Absolut", category:"vodka", unit:"Botella", costUnit:22739, salePrice:220000, rendimiento:9.7, parStock:2, currentStock:3 },
+  { id:"absolut_sab", name:"Absolut SAB", category:"vodka", unit:"Botella", costUnit:20255, salePrice:240000, rendimiento:11.9, parStock:2, currentStock:3 },
+  { id:"absolut_elyx", name:"Absolut Elyx", category:"vodka", unit:"Show Botella", costUnit:31334, salePrice:380000, rendimiento:12.1, parStock:1, currentStock:1 },
+  { id:"belvedere", name:"Belvedere", category:"vodka", unit:"Show Botella", costUnit:50782, salePrice:400000, rendimiento:7.9, parStock:1, currentStock:1 },
+  { id:"belvedere_magnum", name:"Belvedere Magnum", category:"vodka", unit:"Magnum", costUnit:109315, salePrice:700000, rendimiento:6.4, parStock:1, currentStock:1 },
+
+  // DESTILADOS
+  { id:"gin_blu", name:"Gin Blu", category:"destilados", unit:"Botella", costUnit:15115, salePrice:110000, rendimiento:7.3, parStock:2, currentStock:3 },
+  { id:"malibu", name:"Malibu", category:"destilados", unit:"Botella", costUnit:18652, salePrice:110000, rendimiento:5.9, parStock:2, currentStock:3 },
+  { id:"fernet_branca", name:"Fernet Branca", category:"destilados", unit:"Botella", costUnit:14760, salePrice:140000, rendimiento:9.5, parStock:3, currentStock:5 },
+  { id:"fernet_branca_menta", name:"Fernet Branca Menta", category:"destilados", unit:"Botella", costUnit:14760, salePrice:120000, rendimiento:8.1, parStock:2, currentStock:4 },
+  { id:"havana_3_anos", name:"Havana 3 A\u00f1os", category:"destilados", unit:"Botella", costUnit:20553, salePrice:130000, rendimiento:6.3, parStock:2, currentStock:3 },
+  { id:"hodlmoser", name:"Hodlmoser", category:"destilados", unit:"Botella", costUnit:23060, salePrice:170000, rendimiento:7.4, parStock:2, currentStock:3 },
+  { id:"havana_7_anos", name:"Havana 7 A\u00f1os", category:"destilados", unit:"Botella", costUnit:39269, salePrice:180000, rendimiento:4.6, parStock:1, currentStock:2 },
+  { id:"beefeater", name:"Beefeater", category:"destilados", unit:"Botella", costUnit:19737, salePrice:200000, rendimiento:10.1, parStock:2, currentStock:3 },
+  { id:"jagermeister", name:"Jagermeister", category:"destilados", unit:"Botella", costUnit:26486, salePrice:230000, rendimiento:8.7, parStock:2, currentStock:3 },
+  { id:"hennesy", name:"Hennesy", category:"destilados", unit:"Botella", costUnit:54045, salePrice:220000, rendimiento:4.1, parStock:1, currentStock:2 },
+  { id:"nuvo", name:"Nuvo", category:"destilados", unit:"Show Botella", costUnit:71925, salePrice:500000, rendimiento:6.9, parStock:1, currentStock:1 },
+
+  // TRAGOS
+  { id:"blu_tonic", name:"Blu Tonic", category:"tragos", unit:"Vaso", costUnit:1256, salePrice:17000, rendimiento:13.5, parStock:20, currentStock:40 },
+  { id:"sernova_c_speed", name:"Sernova c/Speed", category:"tragos", unit:"Vaso", costUnit:1643, salePrice:17000, rendimiento:10.3, parStock:15, currentStock:30 },
+  { id:"sernova_candy_c_speed", name:"Sernova Candy c/Speed", category:"tragos", unit:"Vaso", costUnit:1643, salePrice:17000, rendimiento:10.3, parStock:15, currentStock:30 },
+  { id:"hodlmoser_c_speed", name:"Hodlmoser c/Speed", category:"tragos", unit:"Vaso", costUnit:2614, salePrice:17000, rendimiento:6.5, parStock:10, currentStock:20 },
+  { id:"jagermeister_c_speed", name:"Jagermeister c/Speed", category:"tragos", unit:"Vaso", costUnit:2907, salePrice:21000, rendimiento:7.2, parStock:12, currentStock:25 },
+  { id:"absolut_c_speed", name:"Absolut c/Speed", category:"tragos", unit:"Vaso", costUnit:2586, salePrice:21000, rendimiento:8.1, parStock:12, currentStock:25 },
+  { id:"aperol_spritz", name:"Aperol Spritz", category:"tragos", unit:"Vaso", costUnit:7711, salePrice:21000, rendimiento:2.7, parStock:10, currentStock:20 },
+  { id:"johnni_lemon", name:"Johnni & Lemon", category:"tragos", unit:"Vaso", costUnit:2567, salePrice:21000, rendimiento:8.2, parStock:12, currentStock:25 },
+  { id:"fernet_c_coca", name:"Fernet c/Coca", category:"tragos", unit:"Vaso", costUnit:1205, salePrice:17000, rendimiento:14.1, parStock:18, currentStock:35 },
+
+  // CHAMPAGNE
+  { id:"moet_brut_imperial", name:"Moet Brut Imperial", category:"champagne", unit:"Show Botella", costUnit:118519, salePrice:650000, rendimiento:5.5, parStock:1, currentStock:1 },
+  { id:"veuve_clicquot_yellow", name:"Veuve Clicquot Yellow", category:"champagne", unit:"Show Botella", costUnit:149387, salePrice:650000, rendimiento:4.3, parStock:1, currentStock:1 },
+  { id:"moet_ice_imperial", name:"Moet Ice Imperial", category:"champagne", unit:"Show Botella", costUnit:144437, salePrice:800000, rendimiento:5.5, parStock:1, currentStock:1 },
+  { id:"veuve_clicquot_rich", name:"Veuve Clicquot Rich", category:"champagne", unit:"Show Botella", costUnit:138552, salePrice:800000, rendimiento:5.8, parStock:1, currentStock:1 },
+  { id:"dom_perignon", name:"Dom Perignon", category:"champagne", unit:"Show Botella", costUnit:435638, salePrice:1700000, rendimiento:3.9, parStock:1, currentStock:1 },
+
+  // COMBOS
+  { id:"combo_2_belvedere_1_magnum", name:"2 Belvedere + 1 Belvedere Magnum", category:"combos", unit:"Combo", costUnit:210880, salePrice:1100000, rendimiento:5.2, parStock:1, currentStock:1 },
+  { id:"combo_2_veuve_yellow_2_baron_b", name:"2 Veuve Clicquot Yellow + 2 Baron B", category:"combos", unit:"Combo", costUnit:373181, salePrice:1440000, rendimiento:3.9, parStock:1, currentStock:1 },
+  { id:"combo_2_veuve_rich_2_baron_b", name:"2 Veuve Clicquot Rich + 2 Baron B", category:"combos", unit:"Combo", costUnit:351512, salePrice:1740000, rendimiento:5.0, parStock:1, currentStock:1 },
 ];
 
 const EVENTOS_INICIAL = [
@@ -178,14 +198,14 @@ const EVENTOS_INICIAL = [
     cycle: "sabado",
     date: "2026-02-15",
     consumption: [
-      { productId: "vodka_smirnoff", cantidadUsada: 18, totalVenta: 810000 },
-      { productId: "vodka_absolut", cantidadUsada: 12, totalVenta: 780000 },
-      { productId: "fernet_branca", cantidadUsada: 22, totalVenta: 880000 },
-      { productId: "fernet_1882", cantidadUsada: 20, totalVenta: 640000 },
-      { productId: "cerveza_stella_lata", cantidadUsada: 180, totalVenta: 900000 },
-      { productId: "cerveza_miller_lata", cantidadUsada: 150, totalVenta: 675000 },
-      { productId: "energizante_redbull", cantidadUsada: 95, totalVenta: 570000 },
-      { productId: "soft_agua", cantidadUsada: 120, totalVenta: 360000 },
+      { productId: "belvedere", cantidadUsada: 2, totalVenta: 800000 },
+      { productId: "moet_brut_imperial", cantidadUsada: 1, totalVenta: 650000 },
+      { productId: "jagermeister_c_speed", cantidadUsada: 25, totalVenta: 525000 },
+      { productId: "sernova_c_speed", cantidadUsada: 30, totalVenta: 510000 },
+      { productId: "aperol_spritz", cantidadUsada: 18, totalVenta: 378000 },
+      { productId: "blu_tonic", cantidadUsada: 40, totalVenta: 680000 },
+      { productId: "gaseosa", cantidadUsada: 50, totalVenta: 300000 },
+      { productId: "speed", cantidadUsada: 45, totalVenta: 270000 },
     ]
   },
   {
@@ -193,12 +213,13 @@ const EVENTOS_INICIAL = [
     cycle: "viernes",
     date: "2026-02-14",
     consumption: [
-      { productId: "vodka_smirnoff", cantidadUsada: 12, totalVenta: 540000 },
-      { productId: "fernet_branca", cantidadUsada: 16, totalVenta: 640000 },
-      { productId: "whisky_jwred", cantidadUsada: 8, totalVenta: 440000 },
-      { productId: "cerveza_corona_botella", cantidadUsada: 140, totalVenta: 910000 },
-      { productId: "energizante_speed", cantidadUsada: 70, totalVenta: 280000 },
-      { productId: "soft_sprite", cantidadUsada: 5, totalVenta: 40000 },
+      { productId: "absolut", cantidadUsada: 3, totalVenta: 660000 },
+      { productId: "veuve_clicquot_yellow", cantidadUsada: 1, totalVenta: 650000 },
+      { productId: "fernet_branca", cantidadUsada: 8, totalVenta: 1120000 },
+      { productId: "absolut_c_speed", cantidadUsada: 22, totalVenta: 462000 },
+      { productId: "fernet_c_coca", cantidadUsada: 35, totalVenta: 595000 },
+      { productId: "gaseosa", cantidadUsada: 35, totalVenta: 210000 },
+      { productId: "agua", cantidadUsada: 40, totalVenta: 240000 },
     ]
   },
   {
@@ -206,11 +227,14 @@ const EVENTOS_INICIAL = [
     cycle: "sabado",
     date: "2026-02-08",
     consumption: [
-      { productId: "vodka_absolut", cantidadUsada: 14, totalVenta: 910000 },
-      { productId: "gin_bombay", cantidadUsada: 10, totalVenta: 650000 },
-      { productId: "champagne_chandon", cantidadUsada: 8, totalVenta: 360000 },
-      { productId: "cerveza_heineken_lata", cantidadUsada: 160, totalVenta: 880000 },
-      { productId: "energizante_redbull", cantidadUsada: 85, totalVenta: 510000 },
+      { productId: "chandon_delice", cantidadUsada: 3, totalVenta: 300000 },
+      { productId: "jw_black_label", cantidadUsada: 2, totalVenta: 560000 },
+      { productId: "gin_blu", cantidadUsada: 4, totalVenta: 440000 },
+      { productId: "hodlmoser_c_speed", cantidadUsada: 28, totalVenta: 476000 },
+      { productId: "johnni_lemon", cantidadUsada: 32, totalVenta: 672000 },
+      { productId: "blu_tonic", cantidadUsada: 38, totalVenta: 646000 },
+      { productId: "speed_pack_x6", cantidadUsada: 2, totalVenta: 60000 },
+      { productId: "miller", cantidadUsada: 60, totalVenta: 480000 },
     ]
   },
   {
@@ -218,11 +242,13 @@ const EVENTOS_INICIAL = [
     cycle: "master",
     date: "2026-02-01",
     consumption: [
-      { productId: "vodka_greygoose", cantidadUsada: 4, totalVenta: 480000 },
-      { productId: "champagne_moet", cantidadUsada: 3, totalVenta: 540000 },
-      { productId: "cerveza_tirada", cantidadUsada: 1, totalVenta: 350000 },
-      { productId: "gin_tanqueray", cantidadUsada: 8, totalVenta: 576000 },
-      { productId: "energizante_redbull", cantidadUsada: 100, totalVenta: 600000 },
+      { productId: "dom_perignon", cantidadUsada: 1, totalVenta: 1700000 },
+      { productId: "jw_blue_label", cantidadUsada: 1, totalVenta: 1800000 },
+      { productId: "belvedere_magnum", cantidadUsada: 1, totalVenta: 700000 },
+      { productId: "combo_2_veuve_yellow_2_baron_b", cantidadUsada: 1, totalVenta: 1440000 },
+      { productId: "sernova_c_speed", cantidadUsada: 15, totalVenta: 255000 },
+      { productId: "aperol_spritz", cantidadUsada: 10, totalVenta: 210000 },
+      { productId: "gaseosas_pack_x6", cantidadUsada: 3, totalVenta: 90000 },
     ]
   },
   {
@@ -230,11 +256,14 @@ const EVENTOS_INICIAL = [
     cycle: "viernes",
     date: "2026-02-07",
     consumption: [
-      { productId: "vodka_smirnoff", cantidadUsada: 10, totalVenta: 450000 },
-      { productId: "fernet_1882", cantidadUsada: 18, totalVenta: 576000 },
-      { productId: "ron_havana3", cantidadUsada: 9, totalVenta: 378000 },
-      { productId: "cerveza_stella_lata", cantidadUsada: 130, totalVenta: 650000 },
-      { productId: "soft_coca", cantidadUsada: 4, totalVenta: 32000 },
+      { productId: "chandon_magnum", cantidadUsada: 1, totalVenta: 180000 },
+      { productId: "absolut", cantidadUsada: 2, totalVenta: 440000 },
+      { productId: "havana_3_anos", cantidadUsada: 5, totalVenta: 650000 },
+      { productId: "sernova_candy_c_speed", cantidadUsada: 26, totalVenta: 442000 },
+      { productId: "fernet_branca_menta", cantidadUsada: 12, totalVenta: 1440000 },
+      { productId: "fernet_c_coca", cantidadUsada: 28, totalVenta: 476000 },
+      { productId: "gaseosa", cantidadUsada: 38, totalVenta: 228000 },
+      { productId: "agua", cantidadUsada: 45, totalVenta: 270000 },
     ]
   },
   {
@@ -242,11 +271,14 @@ const EVENTOS_INICIAL = [
     cycle: "sabado",
     date: "2026-02-22",
     consumption: [
-      { productId: "vodka_smirnoff", cantidadUsada: 16, totalVenta: 720000 },
-      { productId: "fernet_branca", cantidadUsada: 20, totalVenta: 800000 },
-      { productId: "whisky_jackdaniels", cantidadUsada: 6, totalVenta: 420000 },
-      { productId: "cerveza_miller_lata", cantidadUsada: 170, totalVenta: 765000 },
-      { productId: "energizante_speed", cantidadUsada: 80, totalVenta: 320000 },
+      { productId: "moet_brut_imperial", cantidadUsada: 2, totalVenta: 1300000 },
+      { productId: "jw_red_label", cantidadUsada: 3, totalVenta: 660000 },
+      { productId: "jagermeister", cantidadUsada: 6, totalVenta: 1380000 },
+      { productId: "jagermeister_c_speed", cantidadUsada: 30, totalVenta: 630000 },
+      { productId: "hodlmoser_c_speed", cantidadUsada: 25, totalVenta: 425000 },
+      { productId: "aperol_spritz", cantidadUsada: 22, totalVenta: 462000 },
+      { productId: "speed_pack_x6", cantidadUsada: 3, totalVenta: 90000 },
+      { productId: "miller", cantidadUsada: 55, totalVenta: 440000 },
     ]
   },
 ];
