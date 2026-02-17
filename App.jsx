@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { loadAllData, autoRefresh } from './sheets.js';
-import GestionRB from './dashboards/gestion.jsx';
+import GestionRB from './gestion.jsx';
 
 const C = {
   bg: '#060609', s1: '#0e0e14', tx: '#e2e2e6', t2: '#9999a8',
