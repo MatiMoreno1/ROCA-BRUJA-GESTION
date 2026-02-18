@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { fetchTodosLosEventos } from "./sheets.js";
 
 /* ═══════════════════════════════════════════
-   ROCA BRUJA — SISTEMA DE GESTIÓN v3.0
+   ROCA BRUJA — SISTEMA DE GESTIÓN v3.1
    ═══════════════════════════════════════════ */
 
 const C = {
@@ -13,20 +14,20 @@ const C = {
 };
 
 const TYPES = [
-  { id:"sabado", l:"S\u00e1bado", c:C.y, cap:1200 },
+  { id:"sabado", l:"Sábado", c:C.y, cap:1200 },
   { id:"viernes", l:"Viernes", c:C.g, cap:800 },
   { id:"master", l:"Master", c:C.p, cap:1500 }
 ];
 
 const CATS = [
-  "DJ/Art\u00edstico","Sonido/T\u00e9cnica","Seguridad","Personal/RRHH",
-  "Bebidas(CMV)","Limpieza","Energ\u00eda","Marketing","Comisiones","Otros"
+  "DJ/Artístico","Sonido/Técnica","Seguridad","Personal/RRHH",
+  "Bebidas(CMV)","Limpieza","Energía","Marketing","Comisiones","Otros"
 ];
 
 const MOS = ["Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov"];
 
 const FIXED0 = {
-  "Alquiler/Canon":2500000, "Seguros":350000, "Administraci\u00f3n":600000,
+  "Alquiler/Canon":2500000, "Seguros":350000, "Administración":600000,
   "Impuestos fijos":450000, "Mantenimiento":300000, "Software":80000
 };
 
@@ -35,6 +36,7 @@ const VEND0 = [
   {n:"Martu P",com:10},{n:"Sofi R",com:10},{n:"Nico B",com:8},{n:"Valen G",com:10}
 ];
 
+// Datos de fallback (se usan si falla el fetch)
 const EVT0 = [
   { id:1, t:"sabado", d:"2026-03-07", att:980, rM:1800000, rP:2940000, rB:1470000,
     costs:[850000,280000,350000,420000,735000,80000,65000,180000,294000,50000],
@@ -45,15 +47,6 @@ const EVT0 = [
   { id:3, t:"master", d:"2026-03-21", att:1350, rM:3200000, rP:5400000, rB:2700000,
     costs:[1500000,450000,500000,580000,1350000,120000,95000,350000,540000,80000],
     vS:{"Juan L":620000,"Nacho Zava":780000,"Fio H":510000,"Valen G":390000} },
-  { id:4, t:"sabado", d:"2026-03-28", att:1050, rM:2100000, rP:3150000, rB:1575000,
-    costs:[900000,290000,370000,440000,787500,85000,68000,200000,315000,55000],
-    vS:{"Toto M":410000,"Martu P":350000,"Sofi R":300000,"Nico B":250000} },
-  { id:5, t:"viernes", d:"2026-04-03", att:580, rM:850000, rP:1740000, rB:870000,
-    costs:[420000,190000,240000,280000,435000,55000,50000,110000,174000,35000],
-    vS:{"Fio H":280000,"Valen G":260000,"Juan L":310000} },
-  { id:6, t:"sabado", d:"2026-04-11", att:1100, rM:2300000, rP:3300000, rB:1650000,
-    costs:[950000,300000,380000,460000,825000,90000,70000,220000,330000,60000],
-    vS:{"Nacho Zava":520000,"Toto M":380000,"Martu P":410000,"Sofi R":340000} }
 ];
 
 /* ── Helpers ── */
@@ -94,6 +87,8 @@ const pillSt = (active, color) => ({
 export default function GestionRB() {
   const [tab, setTab] = useState(0);
   const [events, setEvents] = useState(EVT0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [fixed, setFixed] = useState(FIXED0);
   const [vendors, setVendors] = useState(VEND0);
   const [expandedEvt, setExpandedEvt] = useState(null);
@@ -112,6 +107,25 @@ export default function GestionRB() {
   const [newVName, setNewVName] = useState("");
   const [newVCom, setNewVCom] = useState(10);
 
+  /* ── Fetch desde Google Sheets al montar ── */
+  useEffect(() => {
+    setLoading(true);
+    fetchTodosLosEventos()
+      .then((evts) => {
+        if (evts && evts.length > 0) {
+          setEvents(evts);
+          setLoadError(null);
+        } else {
+          setLoadError("No se encontraron eventos en el índice. Usando datos de ejemplo.");
+        }
+      })
+      .catch((err) => {
+        console.error("Error cargando eventos:", err);
+        setLoadError("Error al conectar con Google Sheets. Mostrando datos de ejemplo.");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   /* ── Computed ── */
   const totals = events.reduce((acc, e) => {
     const { rev, cost, net } = ev$(e);
@@ -128,7 +142,7 @@ export default function GestionRB() {
     "Escenarios", "Vendedores", "Cash Flow", "Costos", "Admin"
   ];
 
-  /* ── Micro: Stat ── */
+  /* ── Micro components ── */
   const Stat = (props) => (
     <div style={bx({ flex: "1 1 200px", minWidth: 160 })}>
       <div style={{ fontSize: 11, color: C.t2, fontFamily: C.mono, textTransform: "uppercase", marginBottom: 4 }}>
@@ -141,7 +155,6 @@ export default function GestionRB() {
     </div>
   );
 
-  /* ── Micro: Bar ── */
   const Bar = (props) => {
     const mx = props.maxVal || Math.max(...props.items.map((i) => Math.abs(i.v)), 1);
     return (
@@ -164,7 +177,6 @@ export default function GestionRB() {
     );
   };
 
-  /* ── Micro: Input ── */
   const Inp = (props) => (
     <div style={{ marginBottom: 8, flex: props.flex || "unset" }}>
       {props.label && (
@@ -185,28 +197,20 @@ export default function GestionRB() {
     </div>
   );
 
-  /* ── Micro: Slider ── */
   const Sld = (props) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
         <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>{props.label}</span>
-        <span style={{
-          fontSize: 13, fontFamily: C.mono, fontWeight: 700,
-          color: props.value >= 0 ? C.g : C.r
-        }}>
+        <span style={{ fontSize: 13, fontFamily: C.mono, fontWeight: 700, color: props.value >= 0 ? C.g : C.r }}>
           {props.value > 0 ? "+" : ""}{props.value}%
         </span>
       </div>
-      <input
-        type="range" min={props.min || -50} max={props.max || 50}
-        value={props.value}
-        onChange={(e) => props.onChange(Number(e.target.value))}
-        style={{ width: "100%", accentColor: props.color || C.g }}
-      />
+      <input type="range" min={props.min || -50} max={props.max || 50}
+        value={props.value} onChange={(e) => props.onChange(Number(e.target.value))}
+        style={{ width: "100%", accentColor: props.color || C.g }} />
     </div>
   );
 
-  /* ── Micro: Button ── */
   const Btn = (props) => (
     <button onClick={props.onClick} style={{
       padding: "8px 18px", borderRadius: 8, fontSize: 13,
@@ -218,6 +222,34 @@ export default function GestionRB() {
       {props.children}
     </button>
   );
+
+  /* ── Banner de estado de carga ── */
+  const LoadBanner = () => {
+    if (loading) return (
+      <div style={{
+        padding: "8px 16px", background: C.b + "18", border: "1px solid " + C.b + "44",
+        borderRadius: 8, fontSize: 12, color: C.b, fontFamily: C.mono, marginBottom: 12
+      }}>
+        ⟳ Cargando datos desde Google Sheets...
+      </div>
+    );
+    if (loadError) return (
+      <div style={{
+        padding: "8px 16px", background: C.y + "18", border: "1px solid " + C.y + "44",
+        borderRadius: 8, fontSize: 12, color: C.y, fontFamily: C.mono, marginBottom: 12
+      }}>
+        ⚠ {loadError}
+      </div>
+    );
+    return (
+      <div style={{
+        padding: "8px 16px", background: C.g + "18", border: "1px solid " + C.g + "44",
+        borderRadius: 8, fontSize: 12, color: C.g, fontFamily: C.mono, marginBottom: 12
+      }}>
+        ✓ {events.length} eventos cargados desde Google Sheets
+      </div>
+    );
+  };
 
   /* ═══════════════════════════════════
      TAB 0: DASHBOARD
@@ -236,6 +268,7 @@ export default function GestionRB() {
         <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
           Resumen Ejecutivo
         </div>
+        <LoadBanner />
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <Stat label="Eventos" value={events.length} sub={"BE: " + breakEven + " eventos"} color={C.b} />
@@ -250,7 +283,7 @@ export default function GestionRB() {
             sub={"Margen: " + pct(margin)} color={totals.net >= 0 ? C.g : C.r} />
           <Stat label="Costos Fijos / Mes" value={f(fxTotal)} color={C.y} />
           <Stat label="Resultado Neto" value={f(netAfterFx)}
-            sub="Despu\u00e9s de fijos" color={netAfterFx >= 0 ? C.g : C.r} />
+            sub="Después de fijos" color={netAfterFx >= 0 ? C.g : C.r} />
           <Stat label="Break-Even" value={breakEven + " evts"}
             sub="Para cubrir 9 meses" color={C.p} />
         </div>
@@ -288,12 +321,13 @@ export default function GestionRB() {
                 <div>
                   <span style={{ color: tp.c, fontFamily: C.mono, fontSize: 12, marginRight: 8 }}>{tp.l}</span>
                   <span style={{ color: C.t2, fontSize: 12 }}>{e.d}</span>
+                  {e.nombre && <span style={{ color: C.t2, fontSize: 11, marginLeft: 6 }}>— {e.nombre}</span>}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 13 }}>{f(rev)}</span>
-                  <span style={{
-                    color: net >= 0 ? C.g : C.r, fontFamily: C.mono, fontSize: 12, marginLeft: 8
-                  }}>{pct(mg)}</span>
+                  <span style={{ color: net >= 0 ? C.g : C.r, fontFamily: C.mono, fontSize: 12, marginLeft: 8 }}>
+                    {pct(mg)}
+                  </span>
                 </div>
               </div>
             );
@@ -309,11 +343,7 @@ export default function GestionRB() {
   const renderCerrar = () => {
     var steps = ["Tipo y Fecha", "Ingresos", "Costos", "Vendedores", "Confirmar"];
     var upC = (k, v) => setCData({ ...cData, [k]: v });
-    var upCost = (i, v) => {
-      var nc = [...cData.costs];
-      nc[i] = v;
-      setCData({ ...cData, costs: nc });
-    };
+    var upCost = (i, v) => { var nc = [...cData.costs]; nc[i] = v; setCData({ ...cData, costs: nc }); };
     var upVS = (n, v) => setCData({ ...cData, vS: { ...cData.vS, [n]: v } });
     var cRev = (cData.rM || 0) + (cData.rP || 0) + (cData.rB || 0);
     var cCost = cData.costs.reduce((s, c) => s + c, 0);
@@ -328,10 +358,7 @@ export default function GestionRB() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Cerrar Evento
-        </div>
-
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Cerrar Evento</div>
         <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
           {steps.map((s, i) => (
             <div key={i} onClick={() => setCStep(i)} style={{
@@ -342,44 +369,37 @@ export default function GestionRB() {
             }}>{s}</div>
           ))}
         </div>
-
         {cStep === 0 && (
           <div style={bx()}>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               {TYPES.map((tp) => (
-                <button key={tp.id} onClick={() => upC("t", tp.id)}
-                  style={pillSt(cData.t === tp.id, tp.c)}>{tp.l}</button>
+                <button key={tp.id} onClick={() => upC("t", tp.id)} style={pillSt(cData.t === tp.id, tp.c)}>{tp.l}</button>
               ))}
             </div>
             <Inp label="Fecha" value={cData.d} onChange={(v) => upC("d", v)} type="date" />
             <Inp label="Asistencia" value={cData.att} onChange={(v) => upC("att", v)} />
           </div>
         )}
-
         {cStep === 1 && (
           <div style={bx()}>
             <Inp label="Mesas ($)" value={cData.rM} onChange={(v) => upC("rM", v)} />
             <Inp label="Puerta ($)" value={cData.rP} onChange={(v) => upC("rP", v)} />
             <Inp label="Barra ($)" value={cData.rB} onChange={(v) => upC("rB", v)} />
             <div style={{ marginTop: 8, padding: 8, background: C.s2, borderRadius: 8 }}>
-              <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>Total Revenue: </span>
+              <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>Total: </span>
               <span style={{ fontSize: 14, color: C.g, fontFamily: C.mono, fontWeight: 700 }}>{f(cRev)}</span>
             </div>
           </div>
         )}
-
         {cStep === 2 && (
           <div style={bx()}>
-            {CATS.map((cat, i) => (
-              <Inp key={i} label={cat} value={cData.costs[i]} onChange={(v) => upCost(i, v)} />
-            ))}
+            {CATS.map((cat, i) => <Inp key={i} label={cat} value={cData.costs[i]} onChange={(v) => upCost(i, v)} />)}
             <div style={{ marginTop: 8, padding: 8, background: C.s2, borderRadius: 8 }}>
               <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>Total Costos: </span>
               <span style={{ fontSize: 14, color: C.o, fontFamily: C.mono, fontWeight: 700 }}>{f(cCost)}</span>
             </div>
           </div>
         )}
-
         {cStep === 3 && (
           <div style={bx()}>
             {vendors.map((v) => (
@@ -388,51 +408,23 @@ export default function GestionRB() {
             ))}
           </div>
         )}
-
         {cStep === 4 && (
           <div style={bx()}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>
-              Resumen del Evento
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Resumen del Evento</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
-              <div>
-                <span style={{ color: C.t2, fontSize: 12 }}>Tipo: </span>
-                <span style={{ color: et(cData.t).c }}>{et(cData.t).l}</span>
-              </div>
-              <div>
-                <span style={{ color: C.t2, fontSize: 12 }}>Fecha: </span>
-                <span style={{ color: C.tx }}>{cData.d || "-"}</span>
-              </div>
-              <div>
-                <span style={{ color: C.t2, fontSize: 12 }}>Asistencia: </span>
-                <span style={{ color: C.tx }}>{cData.att}</span>
-              </div>
-              <div>
-                <span style={{ color: C.t2, fontSize: 12 }}>Revenue: </span>
-                <span style={{ color: C.g }}>{f(cRev)}</span>
-              </div>
-              <div>
-                <span style={{ color: C.t2, fontSize: 12 }}>Costos: </span>
-                <span style={{ color: C.o }}>{f(cCost)}</span>
-              </div>
-              <div>
-                <span style={{ color: C.t2, fontSize: 12 }}>Resultado: </span>
-                <span style={{ color: cRev - cCost >= 0 ? C.g : C.r }}>{f(cRev - cCost)}</span>
-              </div>
+              <div><span style={{ color: C.t2, fontSize: 12 }}>Tipo: </span><span style={{ color: et(cData.t).c }}>{et(cData.t).l}</span></div>
+              <div><span style={{ color: C.t2, fontSize: 12 }}>Fecha: </span><span style={{ color: C.tx }}>{cData.d || "-"}</span></div>
+              <div><span style={{ color: C.t2, fontSize: 12 }}>Asistencia: </span><span style={{ color: C.tx }}>{cData.att}</span></div>
+              <div><span style={{ color: C.t2, fontSize: 12 }}>Revenue: </span><span style={{ color: C.g }}>{f(cRev)}</span></div>
+              <div><span style={{ color: C.t2, fontSize: 12 }}>Costos: </span><span style={{ color: C.o }}>{f(cCost)}</span></div>
+              <div><span style={{ color: C.t2, fontSize: 12 }}>Resultado: </span><span style={{ color: cRev - cCost >= 0 ? C.g : C.r }}>{f(cRev - cCost)}</span></div>
             </div>
-            <div style={{ marginTop: 16 }}>
-              <Btn onClick={doSave} color={C.g}>Guardar Evento</Btn>
-            </div>
+            <div style={{ marginTop: 16 }}><Btn onClick={doSave} color={C.g}>Guardar Evento</Btn></div>
           </div>
         )}
-
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           {cStep > 0 && <Btn onClick={() => setCStep(cStep - 1)} color={C.t2} outline>Anterior</Btn>}
-          {cStep < 4 && (
-            <div style={{ marginLeft: "auto" }}>
-              <Btn onClick={() => setCStep(cStep + 1)} color={C.g}>Siguiente</Btn>
-            </div>
-          )}
+          {cStep < 4 && <div style={{ marginLeft: "auto" }}><Btn onClick={() => setCStep(cStep + 1)} color={C.g}>Siguiente</Btn></div>}
         </div>
       </div>
     );
@@ -447,45 +439,49 @@ export default function GestionRB() {
         <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
           Eventos ({events.length})
         </div>
-        <Btn onClick={() => { setTab(1); setCStep(0); }} color={C.g}>+ Nuevo</Btn>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn onClick={() => {
+            setLoading(true);
+            fetchTodosLosEventos()
+              .then((evts) => { if (evts?.length) setEvents(evts); })
+              .catch(console.error)
+              .finally(() => setLoading(false));
+          }} color={C.b} outline>↺ Sync</Btn>
+          <Btn onClick={() => { setTab(1); setCStep(0); }} color={C.g}>+ Nuevo</Btn>
+        </div>
       </div>
+      <LoadBanner />
       {events.map((e) => {
         var info = ev$(e);
         var tp = et(e.t);
         var isExp = expandedEvt === e.id;
         return (
-          <div key={e.id} style={bx({ cursor: "pointer" })}
-            onClick={() => setExpandedEvt(isExp ? null : e.id)}>
+          <div key={e.id} style={bx({ cursor: "pointer" })} onClick={() => setExpandedEvt(isExp ? null : e.id)}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <span style={{ color: tp.c, fontFamily: C.mono, fontSize: 13, fontWeight: 600 }}>
-                  {tp.l}
-                </span>
+                <span style={{ color: tp.c, fontFamily: C.mono, fontSize: 13, fontWeight: 600 }}>{tp.l}</span>
                 <span style={{ color: C.t2, fontSize: 12, marginLeft: 8 }}>{e.d}</span>
+                {e.nombre && <span style={{ color: C.t2, fontSize: 11, marginLeft: 6 }}>— {e.nombre}</span>}
                 <span style={{ color: C.t2, fontSize: 11, marginLeft: 8 }}>({e.att} pers)</span>
+                {e.estado && (
+                  <span style={{
+                    marginLeft: 8, fontSize: 10, padding: "2px 6px", borderRadius: 4, fontFamily: C.mono,
+                    background: e.estado === "EN VIVO" ? C.g + "22" : e.estado === "CERRADO" ? C.t2 + "22" : C.y + "22",
+                    color: e.estado === "EN VIVO" ? C.g : e.estado === "CERRADO" ? C.t2 : C.y,
+                  }}>{e.estado}</span>
+                )}
               </div>
               <div>
                 <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 14 }}>{f(info.rev)}</span>
-                <span style={{
-                  color: info.net >= 0 ? C.g : C.r, fontFamily: C.mono, fontSize: 12, marginLeft: 8
-                }}>{f(info.net)}</span>
+                <span style={{ color: info.net >= 0 ? C.g : C.r, fontFamily: C.mono, fontSize: 12, marginLeft: 8 }}>{f(info.net)}</span>
               </div>
             </div>
             {isExp && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid " + C.bd }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                  <div>
-                    <span style={{ color: C.t2, fontSize: 11 }}>Mesas</span>
-                    <div style={{ color: C.y, fontFamily: C.mono }}>{f(e.rM)}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: C.t2, fontSize: 11 }}>Puerta</span>
-                    <div style={{ color: C.g, fontFamily: C.mono }}>{f(e.rP)}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: C.t2, fontSize: 11 }}>Barra</span>
-                    <div style={{ color: C.b, fontFamily: C.mono }}>{f(e.rB)}</div>
-                  </div>
+                  <div><span style={{ color: C.t2, fontSize: 11 }}>Mesas</span><div style={{ color: C.y, fontFamily: C.mono }}>{f(e.rM)}</div></div>
+                  <div><span style={{ color: C.t2, fontSize: 11 }}>Puerta</span><div style={{ color: C.g, fontFamily: C.mono }}>{f(e.rP)}</div></div>
+                  <div><span style={{ color: C.t2, fontSize: 11 }}>Barra</span><div style={{ color: C.b, fontFamily: C.mono }}>{f(e.rB)}</div></div>
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: C.tx, marginBottom: 6 }}>Costos</div>
                 {CATS.map((cat, i) => (e.costs[i] || 0) > 0 ? (
@@ -494,20 +490,13 @@ export default function GestionRB() {
                     <span style={{ color: C.o, fontFamily: C.mono }}>{f(e.costs[i])}</span>
                   </div>
                 ) : null)}
-                <div style={{
-                  display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700,
-                  marginTop: 8, paddingTop: 8, borderTop: "1px solid " + C.bd
-                }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, marginTop: 8, paddingTop: 8, borderTop: "1px solid " + C.bd }}>
                   <span style={{ color: C.tx }}>Resultado</span>
-                  <span style={{ color: info.net >= 0 ? C.g : C.r, fontFamily: C.mono }}>
-                    {f(info.net)} ({pct(info.margin)})
-                  </span>
+                  <span style={{ color: info.net >= 0 ? C.g : C.r, fontFamily: C.mono }}>{f(info.net)} ({pct(info.margin)})</span>
                 </div>
                 {Object.keys(e.vS || {}).length > 0 && (
                   <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.tx, marginBottom: 4 }}>
-                      Vendedores
-                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.tx, marginBottom: 4 }}>Vendedores</div>
                     {Object.entries(e.vS).map(([n, val]) => (
                       <div key={n} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0" }}>
                         <span style={{ color: C.t2 }}>{n}</span>
@@ -516,12 +505,6 @@ export default function GestionRB() {
                     ))}
                   </div>
                 )}
-                <div style={{ marginTop: 8 }}>
-                  <Btn onClick={(ev) => {
-                    ev.stopPropagation();
-                    setEvents(events.filter((x) => x.id !== e.id));
-                  }} color={C.r} outline>Eliminar</Btn>
-                </div>
               </div>
             )}
           </div>
@@ -534,73 +517,34 @@ export default function GestionRB() {
      TAB 3: COMPARAR
      ═══════════════════════════════════ */
   const renderCompare = () => {
-    if (events.length < 2) {
-      return (
-        <div style={bx()}>
-          <span style={{ color: C.t2 }}>Necesit\u00e1s al menos 2 eventos para comparar.</span>
-        </div>
-      );
-    }
+    if (events.length < 2) return <div style={bx()}><span style={{ color: C.t2 }}>Necesitás al menos 2 eventos para comparar.</span></div>;
     var a = events[cmpA] || events[0];
     var b2 = events[cmpB] || events[1];
-    var pa = ev$(a);
-    var pb = ev$(b2);
-    var tpa = et(a.t);
-    var tpb = et(b2.t);
-
+    var pa = ev$(a); var pb = ev$(b2);
+    var tpa = et(a.t); var tpb = et(b2.t);
     var CmpRow = (rp) => (
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-        padding: "6px 0", borderBottom: "1px solid " + C.s2
-      }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", padding: "6px 0", borderBottom: "1px solid " + C.s2 }}>
         <span style={{ color: C.t2, fontSize: 12 }}>{rp.label}</span>
-        <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 13, textAlign: "right" }}>
-          {(rp.fmt || f)(rp.va)}
-        </span>
-        <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 13, textAlign: "right" }}>
-          {(rp.fmt || f)(rp.vb)}
-        </span>
+        <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 13, textAlign: "right" }}>{(rp.fmt || f)(rp.va)}</span>
+        <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 13, textAlign: "right" }}>{(rp.fmt || f)(rp.vb)}</span>
       </div>
     );
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Comparar Eventos
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Comparar Eventos</div>
         <div style={{ display: "flex", gap: 12 }}>
-          <select value={cmpA} onChange={(e) => setCmpA(Number(e.target.value))}
-            style={{
-              flex: 1, padding: 8, background: C.s2, border: "1px solid " + C.bd,
-              borderRadius: 8, color: C.tx, fontFamily: C.mono
-            }}>
-            {events.map((e, i) => (
-              <option key={i} value={i}>{et(e.t).l + " " + e.d}</option>
-            ))}
-          </select>
-          <span style={{ color: C.t2, alignSelf: "center" }}>vs</span>
-          <select value={cmpB} onChange={(e) => setCmpB(Number(e.target.value))}
-            style={{
-              flex: 1, padding: 8, background: C.s2, border: "1px solid " + C.bd,
-              borderRadius: 8, color: C.tx, fontFamily: C.mono
-            }}>
-            {events.map((e, i) => (
-              <option key={i} value={i}>{et(e.t).l + " " + e.d}</option>
-            ))}
-          </select>
+          {[cmpA, cmpB].map((val, idx) => (
+            <select key={idx} value={val} onChange={(e) => idx === 0 ? setCmpA(Number(e.target.value)) : setCmpB(Number(e.target.value))}
+              style={{ flex: 1, padding: 8, background: C.s2, border: "1px solid " + C.bd, borderRadius: 8, color: C.tx, fontFamily: C.mono }}>
+              {events.map((e, i) => <option key={i} value={i}>{e.nombre || (et(e.t).l + " " + e.d)}</option>)}
+            </select>
+          ))}
         </div>
         <div style={bx()}>
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-            paddingBottom: 8, borderBottom: "1px solid " + C.bd, marginBottom: 4
-          }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", paddingBottom: 8, borderBottom: "1px solid " + C.bd, marginBottom: 4 }}>
             <span></span>
-            <span style={{ color: tpa.c, fontFamily: C.mono, fontSize: 12, textAlign: "right" }}>
-              {tpa.l + " " + a.d}
-            </span>
-            <span style={{ color: tpb.c, fontFamily: C.mono, fontSize: 12, textAlign: "right" }}>
-              {tpb.l + " " + b2.d}
-            </span>
+            <span style={{ color: tpa.c, fontFamily: C.mono, fontSize: 12, textAlign: "right" }}>{a.nombre || (tpa.l + " " + a.d)}</span>
+            <span style={{ color: tpb.c, fontFamily: C.mono, fontSize: 12, textAlign: "right" }}>{b2.nombre || (tpb.l + " " + b2.d)}</span>
           </div>
           <CmpRow label="Asistencia" va={a.att} vb={b2.att} fmt={String} />
           <CmpRow label="Revenue" va={pa.rev} vb={pb.rev} />
@@ -624,45 +568,31 @@ export default function GestionRB() {
     var adjNet = adjRev - adjCost;
     var adjNetFx = adjNet - fxTotal;
     var adjMargin = adjRev > 0 ? adjNet / adjRev : 0;
-
     var presets = [
       { l: "Optimista", vol: 15, price: 10, cost: -5, c: C.g },
       { l: "Base", vol: 0, price: 0, cost: 0, c: C.b },
       { l: "Pesimista", vol: -20, price: -10, cost: 15, c: C.r }
     ];
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Simulador de Escenarios
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Simulador de Escenarios</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {presets.map((pr) => (
-            <Btn key={pr.l} onClick={() => {
-              setScVol(pr.vol); setScPrice(pr.price); setScCost(pr.cost);
-            }} color={pr.c} outline>{pr.l}</Btn>
-          ))}
+          {presets.map((pr) => <Btn key={pr.l} onClick={() => { setScVol(pr.vol); setScPrice(pr.price); setScCost(pr.cost); }} color={pr.c} outline>{pr.l}</Btn>)}
         </div>
-
         <div style={bx()}>
           <Sld label="Volumen (asistencia)" value={scVol} onChange={setScVol} color={C.b} />
           <Sld label="Precio (ticket / consumo)" value={scPrice} onChange={setScPrice} color={C.g} />
           <Sld label="Costos variables" value={scCost} onChange={setScCost} color={C.o} />
         </div>
-
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <Stat label="Revenue Ajustado" value={f(adjRev)} color={C.g} />
           <Stat label="Costos Ajustados" value={f(adjCost)} color={C.o} />
           <Stat label="Resultado Op." value={f(adjNet)} color={adjNet >= 0 ? C.g : C.r} />
-          <Stat label="Resultado Neto" value={f(adjNetFx)}
-            sub="Despu\u00e9s de fijos" color={adjNetFx >= 0 ? C.g : C.r} />
+          <Stat label="Resultado Neto" value={f(adjNetFx)} sub="Después de fijos" color={adjNetFx >= 0 ? C.g : C.r} />
           <Stat label="Margen" value={pct(adjMargin)} color={adjMargin > 0.2 ? C.g : C.r} />
         </div>
-
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>
-            Base vs Escenario
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>Base vs Escenario</div>
           <Bar items={[
             { l: "Base Rev", v: totals.rev, c: C.g },
             { l: "Esc Rev", v: adjRev, c: C.b },
@@ -688,34 +618,21 @@ export default function GestionRB() {
       });
     });
     var ranked = Object.entries(vendTotals).sort((a, b) => b[1].sales - a[1].sales);
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Ranking Vendedores
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Ranking Vendedores</div>
         <Bar items={ranked.map(([n, d]) => ({ l: n, v: d.sales, c: C.v }))} />
         <div style={bx()}>
           {ranked.map(([n, d], i) => (
-            <div key={n} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "8px 0", borderBottom: "1px solid " + C.s2
-            }}>
+            <div key={n} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.s2 }}>
               <div>
-                <span style={{
-                  color: i < 3 ? C.v : C.t2, fontFamily: C.mono,
-                  fontSize: 14, fontWeight: 600, marginRight: 8
-                }}>#{i + 1}</span>
+                <span style={{ color: i < 3 ? C.v : C.t2, fontFamily: C.mono, fontSize: 14, fontWeight: 600, marginRight: 8 }}>#{i + 1}</span>
                 <span style={{ color: C.tx, fontSize: 13 }}>{n}</span>
-                <span style={{ color: C.t2, fontSize: 11, marginLeft: 6 }}>
-                  ({d.events} evts)
-                </span>
+                <span style={{ color: C.t2, fontSize: 11, marginLeft: 6 }}>({d.events} evts)</span>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ color: C.tx, fontFamily: C.mono, fontSize: 14 }}>{f(d.sales)}</div>
-                <div style={{ color: C.t2, fontSize: 11 }}>
-                  Com: {f(d.sales * d.com / 100)}
-                </div>
+                <div style={{ color: C.t2, fontSize: 11 }}>Com: {f(d.sales * d.com / 100)}</div>
               </div>
             </div>
           ))}
@@ -728,7 +645,7 @@ export default function GestionRB() {
      TAB 6: CASH FLOW
      ═══════════════════════════════════ */
   const renderCash = () => {
-    var monthly = MOS.map((m) => ({ m: m, rev: 0, cost: 0, fx: fxTotal, net: 0, running: 0 }));
+    var monthly = MOS.map((m) => ({ m, rev: 0, cost: 0, fx: fxTotal, net: 0, running: 0 }));
     events.forEach((e) => {
       var mo = e.d ? parseInt(e.d.split("-")[1], 10) : 3;
       var idx = mo - 3;
@@ -739,58 +656,33 @@ export default function GestionRB() {
       }
     });
     var running = 0;
-    monthly.forEach((m) => {
-      m.net = m.rev - m.cost - m.fx;
-      running += m.net;
-      m.running = running;
-    });
-
+    monthly.forEach((m) => { m.net = m.rev - m.cost - m.fx; running += m.net; m.running = running; });
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Cash Flow Mensual
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Cash Flow Mensual</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <Stat label="Acumulado" value={f(running)} color={running >= 0 ? C.g : C.r} />
           <Stat label="Meses Negativos" value={monthly.filter((m) => m.net < 0).length} color={C.r} />
         </div>
-
         <div style={bx()}>
-          <div style={{
-            display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr 1fr", gap: 8,
-            padding: "6px 0", fontSize: 11, color: C.t2, fontFamily: C.mono,
-            borderBottom: "1px solid " + C.bd, marginBottom: 4
-          }}>
-            <span>Mes</span>
-            <span style={{ textAlign: "right" }}>Revenue</span>
-            <span style={{ textAlign: "right" }}>Variable</span>
-            <span style={{ textAlign: "right" }}>Fijos</span>
+          <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr 1fr", gap: 8, padding: "6px 0", fontSize: 11, color: C.t2, fontFamily: C.mono, borderBottom: "1px solid " + C.bd, marginBottom: 4 }}>
+            <span>Mes</span><span style={{ textAlign: "right" }}>Revenue</span>
+            <span style={{ textAlign: "right" }}>Variable</span><span style={{ textAlign: "right" }}>Fijos</span>
             <span style={{ textAlign: "right" }}>Neto</span>
           </div>
           {monthly.map((m, i) => (
-            <div key={i} style={{
-              display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr 1fr", gap: 8,
-              padding: "6px 0", borderBottom: "1px solid " + C.s2,
-              fontSize: 12, fontFamily: C.mono
-            }}>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr 1fr", gap: 8, padding: "6px 0", borderBottom: "1px solid " + C.s2, fontSize: 12, fontFamily: C.mono }}>
               <span style={{ color: C.tx, fontWeight: 600 }}>{m.m}</span>
               <span style={{ color: C.g, textAlign: "right" }}>{f(m.rev)}</span>
               <span style={{ color: C.o, textAlign: "right" }}>{f(m.cost)}</span>
               <span style={{ color: C.y, textAlign: "right" }}>{f(m.fx)}</span>
-              <span style={{
-                color: m.net >= 0 ? C.g : C.r, textAlign: "right", fontWeight: 700
-              }}>{f(m.net)}</span>
+              <span style={{ color: m.net >= 0 ? C.g : C.r, textAlign: "right", fontWeight: 700 }}>{f(m.net)}</span>
             </div>
           ))}
         </div>
-
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>
-            Saldo Acumulado
-          </div>
-          <Bar items={monthly.map((m) => ({
-            l: m.m, v: m.running, c: m.running >= 0 ? C.g : C.r
-          }))} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>Saldo Acumulado</div>
+          <Bar items={monthly.map((m) => ({ l: m.m, v: m.running, c: m.running >= 0 ? C.g : C.r }))} />
         </div>
       </div>
     );
@@ -800,66 +692,32 @@ export default function GestionRB() {
      TAB 7: COSTOS
      ═══════════════════════════════════ */
   const renderCosts = () => {
-    var catTotals = CATS.map((cat, i) => ({
-      cat: cat,
-      total: events.reduce((s, e) => s + (e.costs[i] || 0), 0)
-    })).sort((a, b) => b.total - a.total);
+    var catTotals = CATS.map((cat, i) => ({ cat, total: events.reduce((s, e) => s + (e.costs[i] || 0), 0) })).sort((a, b) => b.total - a.total);
     var totalVar = catTotals.reduce((s, c) => s + c.total, 0);
     var totalAnual = totalVar + fxTotal * 9;
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          An\u00e1lisis de Costos
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Análisis de Costos</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <Stat label="Variables Total" value={f(totalVar)} color={C.o} />
           <Stat label="Fijos / Mes" value={f(fxTotal)} color={C.y} />
           <Stat label="Fijos 9 Meses" value={f(fxTotal * 9)} color={C.r} />
           <Stat label="Costo Total Anual" value={f(totalAnual)} color={C.p} />
         </div>
-
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>
-            Variables por Categor\u00eda
-          </div>
-          <Bar items={catTotals.map((c) => ({
-            l: c.cat.length > 14 ? c.cat.slice(0, 12) + ".." : c.cat,
-            v: c.total, c: C.o
-          }))} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Variables por Categoría</div>
+          <Bar items={catTotals.map((c) => ({ l: c.cat.length > 14 ? c.cat.slice(0, 12) + ".." : c.cat, v: c.total, c: C.o }))} />
         </div>
-
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>
-            Costos Fijos
-          </div>
-          <Bar items={Object.entries(fixed).map(([k, v]) => ({
-            l: k.length > 14 ? k.slice(0, 12) + ".." : k,
-            v: v, c: C.y
-          }))} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Costos Fijos</div>
+          <Bar items={Object.entries(fixed).map(([k, v]) => ({ l: k.length > 14 ? k.slice(0, 12) + ".." : k, v, c: C.y }))} />
         </div>
-
         <div style={bx()}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>Insights</div>
           <div style={{ fontSize: 13, color: C.tx, lineHeight: 1.7 }}>
-            {catTotals.length > 0 && (
-              <div>
-                <span style={{ color: C.r, fontWeight: 600 }}>Mayor costo variable: </span>
-                {catTotals[0].cat} ({f(catTotals[0].total)} - {pct(totalVar > 0 ? catTotals[0].total / totalVar : 0)} del total)
-              </div>
-            )}
-            <div style={{ marginTop: 4 }}>
-              <span style={{ color: C.y, fontWeight: 600 }}>Fijos representan: </span>
-              {pct(totalAnual > 0 ? (fxTotal * 9) / totalAnual : 0)} del costo total anual
-            </div>
-            <div style={{ marginTop: 4 }}>
-              <span style={{ color: C.g, fontWeight: 600 }}>Costo variable prom/evento: </span>
-              {f(events.length > 0 ? totalVar / events.length : 0)}
-            </div>
-            <div style={{ marginTop: 4 }}>
-              <span style={{ color: C.b, fontWeight: 600 }}>Ticket m\u00ednimo para BE: </span>
-              {f(events.length > 0 ? (fxTotal * 9) / events.length : 0)} extra por evento
-            </div>
+            {catTotals.length > 0 && <div><span style={{ color: C.r, fontWeight: 600 }}>Mayor costo variable: </span>{catTotals[0].cat} ({f(catTotals[0].total)} - {pct(totalVar > 0 ? catTotals[0].total / totalVar : 0)} del total)</div>}
+            <div style={{ marginTop: 4 }}><span style={{ color: C.y, fontWeight: 600 }}>Fijos representan: </span>{pct(totalAnual > 0 ? (fxTotal * 9) / totalAnual : 0)} del costo total anual</div>
+            <div style={{ marginTop: 4 }}><span style={{ color: C.g, fontWeight: 600 }}>Costo variable prom/evento: </span>{f(events.length > 0 ? totalVar / events.length : 0)}</div>
           </div>
         </div>
       </div>
@@ -871,140 +729,89 @@ export default function GestionRB() {
      ═══════════════════════════════════ */
   const renderAdmin = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-        Administraci\u00f3n
-      </div>
-
+      <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Administración</div>
       <div style={bx()}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>
-          Costos Fijos Mensuales
-        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Costos Fijos Mensuales</div>
         {Object.entries(fixed).map(([k, v]) => (
-          <div key={k} style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            padding: "6px 0", borderBottom: "1px solid " + C.s2
-          }}>
+          <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid " + C.s2 }}>
             <span style={{ color: C.tx, fontSize: 13 }}>{k}</span>
             {editFx === k ? (
               <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <input type="number" value={editFxVal}
-                  onChange={(e) => setEditFxVal(e.target.value)}
-                  style={{
-                    width: 120, padding: "4px 8px", background: C.s2,
-                    border: "1px solid " + C.g, borderRadius: 6,
-                    color: C.tx, fontFamily: C.mono, fontSize: 13, outline: "none"
-                  }} />
-                <Btn onClick={() => {
-                  setFixed({ ...fixed, [k]: Number(editFxVal) });
-                  setEditFx(null);
-                }} color={C.g}>OK</Btn>
+                <input type="number" value={editFxVal} onChange={(e) => setEditFxVal(e.target.value)}
+                  style={{ width: 120, padding: "4px 8px", background: C.s2, border: "1px solid " + C.g, borderRadius: 6, color: C.tx, fontFamily: C.mono, fontSize: 13, outline: "none" }} />
+                <Btn onClick={() => { setFixed({ ...fixed, [k]: Number(editFxVal) }); setEditFx(null); }} color={C.g}>OK</Btn>
               </div>
             ) : (
-              <span style={{
-                color: C.y, fontFamily: C.mono, fontSize: 13, cursor: "pointer"
-              }} onClick={() => { setEditFx(k); setEditFxVal(String(v)); }}>
-                {ff(v)}
-              </span>
+              <span style={{ color: C.y, fontFamily: C.mono, fontSize: 13, cursor: "pointer" }}
+                onClick={() => { setEditFx(k); setEditFxVal(String(v)); }}>{ff(v)}</span>
             )}
           </div>
         ))}
-        <div style={{
-          display: "flex", justifyContent: "space-between",
-          padding: "8px 0", fontWeight: 700
-        }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontWeight: 700 }}>
           <span style={{ color: C.tx }}>Total</span>
           <span style={{ color: C.y, fontFamily: C.mono }}>{ff(sumFx(fixed))}</span>
         </div>
       </div>
-
       <div style={bx()}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>
-          Vendedores ({vendors.length})
-        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Vendedores ({vendors.length})</div>
         {vendors.map((v, i) => (
-          <div key={i} style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            padding: "6px 0", borderBottom: "1px solid " + C.s2
-          }}>
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid " + C.s2 }}>
             <span style={{ color: C.tx, fontSize: 13 }}>{v.n}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: C.v, fontFamily: C.mono, fontSize: 12 }}>{v.com}%</span>
-              <Btn onClick={() => setVendors(vendors.filter((_, j) => j !== i))}
-                color={C.r} outline>x</Btn>
+              <Btn onClick={() => setVendors(vendors.filter((_, j) => j !== i))} color={C.r} outline>x</Btn>
             </div>
           </div>
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "flex-end" }}>
-          <div style={{ flex: 1 }}>
-            <Inp label="Nombre" value={newVName} onChange={setNewVName} type="text" />
-          </div>
-          <div style={{ width: 80 }}>
-            <Inp label="Com %" value={newVCom} onChange={setNewVCom} />
-          </div>
-          <Btn onClick={() => {
-            if (newVName.trim()) {
-              setVendors([...vendors, { n: newVName.trim(), com: newVCom }]);
-              setNewVName("");
-            }
-          }} color={C.g}>+</Btn>
+          <div style={{ flex: 1 }}><Inp label="Nombre" value={newVName} onChange={setNewVName} type="text" /></div>
+          <div style={{ width: 80 }}><Inp label="Com %" value={newVCom} onChange={setNewVCom} /></div>
+          <Btn onClick={() => { if (newVName.trim()) { setVendors([...vendors, { n: newVName.trim(), com: newVCom }]); setNewVName(""); } }} color={C.g}>+</Btn>
         </div>
       </div>
-
       <div style={bx()}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>
-          Datos del Sistema
-        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>Datos del Sistema</div>
         <div style={{ fontSize: 12, color: C.t2, lineHeight: 1.6 }}>
-          <div>{events.length} eventos cargados</div>
+          <div>{events.length} eventos cargados {loadError ? "(fallback)" : "desde Sheets"}</div>
           <div>{vendors.length} vendedores activos</div>
-          <div>{Object.keys(fixed).length} categor\u00edas de costos fijos</div>
+          <div>{Object.keys(fixed).length} categorías de costos fijos</div>
           <div>Temporada: Mar - Nov ({MOS.length} meses)</div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Btn onClick={() => {
+            setLoading(true);
+            fetchTodosLosEventos()
+              .then((evts) => { if (evts?.length) { setEvents(evts); setLoadError(null); } })
+              .catch((e) => setLoadError("Error: " + e.message))
+              .finally(() => setLoading(false));
+          }} color={C.b}>↺ Recargar desde Sheets</Btn>
         </div>
       </div>
     </div>
   );
 
-  /* ═══ Tab render map ═══ */
   var renderTab = [
     renderDash, renderCerrar, renderEvts, renderCompare,
     renderScenarios, renderVend, renderCash, renderCosts, renderAdmin
   ];
 
-  /* ═══ MAIN RENDER ═══ */
   return (
     <div style={{ background: C.bg, color: C.tx, fontFamily: C.sans }}>
-      <div style={{
-        background: C.s1, borderBottom: "1px solid " + C.bd,
-        padding: "12px 16px", display: "flex",
-        justifyContent: "space-between", alignItems: "center"
-      }}>
+      <div style={{ background: C.s1, borderBottom: "1px solid " + C.bd, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <span style={{ fontSize: 16, fontWeight: 700, color: C.tx }}>ROCA BRUJA</span>
-          <span style={{
-            fontSize: 11, color: C.t2, marginLeft: 8, fontFamily: C.mono
-          }}>GESTI\u00d3N v3.0</span>
+          <span style={{ fontSize: 11, color: C.t2, marginLeft: 8, fontFamily: C.mono }}>GESTIÓN v3.1</span>
         </div>
-        <div style={{ fontSize: 11, color: C.t2, fontFamily: C.mono }}>
-          {events.length} eventos | {f(totals.rev)} rev
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {loading && <span style={{ fontSize: 11, color: C.b, fontFamily: C.mono }}>⟳ sync...</span>}
+          <div style={{ fontSize: 11, color: C.t2, fontFamily: C.mono }}>{events.length} eventos | {f(totals.rev)} rev</div>
         </div>
       </div>
-
-      <div style={{
-        display: "flex", gap: 2, padding: "8px 12px",
-        overflowX: "auto", background: C.s1,
-        borderBottom: "1px solid " + C.bd
-      }}>
+      <div style={{ display: "flex", gap: 2, padding: "8px 12px", overflowX: "auto", background: C.s1, borderBottom: "1px solid " + C.bd }}>
         {TABS.map((t, i) => (
-          <button key={i} onClick={() => setTab(i)} style={{
-            padding: "6px 12px", borderRadius: 8, fontSize: 12,
-            fontFamily: C.mono, cursor: "pointer", border: "none",
-            whiteSpace: "nowrap",
-            background: tab === i ? C.g + "22" : "transparent",
-            color: tab === i ? C.g : C.t2
-          }}>{t}</button>
+          <button key={i} onClick={() => setTab(i)} style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontFamily: C.mono, cursor: "pointer", border: "none", whiteSpace: "nowrap", background: tab === i ? C.g + "22" : "transparent", color: tab === i ? C.g : C.t2 }}>{t}</button>
         ))}
       </div>
-
       <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
         {renderTab[tab]()}
       </div>
