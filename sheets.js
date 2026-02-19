@@ -2,7 +2,6 @@ import Papa from "papaparse";
 
 const BASE = "https://docs.google.com/spreadsheets/d";
 
-/* ── Fetch una pestaña como array de objetos ── */
 export async function fetchSheet(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -12,120 +11,147 @@ export async function fetchSheet(sheetId, tabName) {
   return data;
 }
 
-/* ── Fetch múltiples pestañas de un Sheet ── */
-export async function fetchAllTabs(sheetId, tabNames) {
-  const results = {};
-  await Promise.all(
-    tabNames.map(async (tab) => {
-      try {
-        results[tab] = await fetchSheet(sheetId, tab);
-      } catch (e) {
-        console.warn(`Error fetching tab "${tab}":`, e.message);
-        results[tab] = [];
-      }
-    })
-  );
-  return results;
-}
-
-/* ── Sheet IDs ── */
 export const SHEET_IDS = {
-  indice:    "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8", // INDICE_EVENTOS_RB
-  ejecutivo: "1FxCTKSlIRNjjIIAcoeLnHYEKIhrTAGsaJkCy41m85bU", // GR_ROCA_BRUJA_2026
-  template:  "1b9uAf6a6TaZcEJk204SZ_uOScFXWYf1K",             // EVENTO_TEMPLATE_RB
+  indice:    "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8",
+  ejecutivo: "1b9uAf6a6TaZcEJk204SZ_uOScFXWYf1K",
 };
 
-/* ── Carga el índice de eventos ── */
+const MESES = [
+  { num:1,  nombre:"ENE", tab:"ENERO_MENSUAL" },
+  { num:2,  nombre:"FEB", tab:"FEBRERO_MENSUAL" },
+  { num:3,  nombre:"MAR", tab:"MARZO_MENSUAL" },
+  { num:4,  nombre:"ABR", tab:"ABRIL_MENSUAL" },
+  { num:5,  nombre:"MAY", tab:"MAYO_MENSUAL" },
+  { num:6,  nombre:"JUN", tab:"JUNIO_MENSUAL" },
+  { num:7,  nombre:"JUL", tab:"JULIO_MENSUAL" },
+  { num:8,  nombre:"AGO", tab:"AGOSTO_MENSUAL" },
+  { num:9,  nombre:"SEP", tab:"SEPTIEMBRE_MENSUAL" },
+  { num:10, nombre:"OCT", tab:"OCTUBRE_MENSUAL" },
+  { num:11, nombre:"NOV", tab:"NOVIEMBRE_MENSUAL" },
+  { num:12, nombre:"DIC", tab:"DICIEMBRE_MENSUAL" },
+];
+
+function parseNum(val) {
+  if (!val && val !== 0) return 0;
+  if (typeof val === "number") return val;
+  const clean = String(val).replace(/[^0-9.-]/g, "");
+  return parseFloat(clean) || 0;
+}
+
+async function fetchIngresosMes(sheetId, tab) {
+  try {
+    const rows = await fetchSheet(sheetId, tab);
+    let total = 0;
+    for (const row of rows) {
+      const concepto = (row["CONCEPTO"] || "").toUpperCase();
+      const monto = parseNum(row["TOTAL"] || row["total"] || "");
+      if (monto > 0 && !concepto.includes("TOTAL") && !concepto.includes("EGRESO")) {
+        total += monto;
+      }
+    }
+    return total;
+  } catch { return 0; }
+}
+
+async function fetchPagosMaestro(sheetId) {
+  try {
+    const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
+    const porMes = {};
+    const porConcepto = {};
+
+    for (const row of rows) {
+      const fecha    = row["FECHA"] || "";
+      const concepto = row["CONCEPTO"] || "";
+      const monto    = parseNum(row["MONTO"] || "");
+      if (!fecha || !concepto || monto <= 0) continue;
+
+      let mes = null;
+      if (fecha.includes("/")) {
+        const p = fecha.split("/");
+        mes = p.length === 3 ? parseInt(p[1]) : null;
+      } else if (fecha.includes("-")) {
+        const p = fecha.split("-");
+        mes = p.length === 3 ? parseInt(p[1]) : null;
+      }
+      if (!mes) continue;
+
+      if (!porMes[mes]) porMes[mes] = { total: 0, porConcepto: {} };
+      porMes[mes].total += monto;
+      porMes[mes].porConcepto[concepto] = (porMes[mes].porConcepto[concepto] || 0) + monto;
+      porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
+    }
+    return { porMes, porConcepto };
+  } catch { return { porMes: {}, porConcepto: {} }; }
+}
+
+export async function fetchEjecutivo() {
+  const sheetId = SHEET_IDS.ejecutivo;
+  const [pagos, ...ingresosPorMes] = await Promise.all([
+    fetchPagosMaestro(sheetId),
+    ...MESES.map((m) => fetchIngresosMes(sheetId, m.tab))
+  ]);
+
+  const cashflow = MESES.map((m, i) => {
+    const ingresos = ingresosPorMes[i];
+    const egresos  = pagos.porMes[m.num]?.total || 0;
+    return { mes: m.nombre, mesNum: m.num, ingresos, egresos, resultado: ingresos - egresos };
+  });
+
+  const totalIngresos = cashflow.reduce((s, m) => s + m.ingresos, 0);
+  const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos, 0);
+
+  return {
+    cashflow,
+    totalIngresos,
+    totalEgresos,
+    resultado: totalIngresos - totalEgresos,
+    porConcepto: pagos.porConcepto,
+  };
+}
+
 export async function fetchIndice() {
   const rows = await fetchSheet(SHEET_IDS.indice, "INDICE");
   return rows.map((r) => ({
-    fecha:    r["FECHA"]         || r["fecha"]         || "",
-    nombre:   r["NOMBRE EVENTO"] || r["nombre_evento"] || "",
-    sheetId:  r["SHEET ID"]      || r["sheet_id"]      || "",
-    estado:   r["ESTADO"]        || r["estado"]        || "",
+    fecha:   r["FECHA"] || "",
+    nombre:  r["NOMBRE EVENTO"] || "",
+    sheetId: r["SHEET ID"] || "",
+    estado:  r["ESTADO"] || "",
   })).filter((r) => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
 
-/* ── Carga un evento completo desde su Sheet ID ── */
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
-  const tabs = await fetchAllTabs(sheetId, [
-    "RESUMEN", "MESAS", "COMISIONES", "BOLETERIA"
-  ]);
+  const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
+  await Promise.all(Object.keys(tabs).map(async (tab) => {
+    try { tabs[tab] = await fetchSheet(sheetId, tab); } catch { tabs[tab] = []; }
+  }));
 
-  // — Resumen: buscar filas clave por CONCEPTO
-  const resumen = tabs["RESUMEN"] || [];
-  const findMonto = (concepto) => {
-    const row = resumen.find((r) =>
-      (r["CONCEPTO"] || "").toLowerCase().includes(concepto.toLowerCase())
-    );
-    return row ? parseFloat((row["MONTO"] || "0").replace(/[^0-9.-]/g, "")) || 0 : 0;
+  const resumen = tabs["RESUMEN"];
+  const findMonto = (kw) => {
+    const row = resumen.find((r) => Object.values(r).some((v) => String(v).toLowerCase().includes(kw.toLowerCase())));
+    return row ? parseNum(row["MONTO"] || row["TOTAL"] || "") : 0;
   };
 
-  const rP  = findMonto("boleteria") || findMonto("puerta");
-  const rB  = findMonto("barra");
-  const rM  = findMonto("mesas");
-
-  const costPersonal    = findMonto("personal");
-  const costExtras      = findMonto("extras");
-  const costCMV         = findMonto("cmv") || findMonto("bebidas");
-  const costComisiones  = findMonto("comisiones");
-  const costFijo        = findMonto("fijo");
-
-  // — Boletería: sumar asistencia
-  const boleteria = tabs["BOLETERIA"] || [];
-  const att = boleteria.reduce((s, r) => {
-    const v = parseFloat((r["CANTIDAD"] || r["cantidad"] || "0").replace(/[^0-9.-]/g, ""));
-    return s + (isNaN(v) ? 0 : v);
-  }, 0) || 0;
-
-  // — Comisiones: ventas por vendedor
-  const comisiones = tabs["COMISIONES"] || [];
+  const att = tabs["BOLETERIA"].reduce((s, r) => s + parseNum(r["CANTIDAD"] || ""), 0);
   const vS = {};
-  comisiones.forEach((r) => {
-    const nombre = r["VENDEDOR"] || r["vendedor"] || r["NOMBRE"] || r["nombre"] || "";
-    const monto  = parseFloat((r["MONTO"] || r["monto"] || r["TOTAL"] || r["total"] || "0").replace(/[^0-9.-]/g, "")) || 0;
-    if (nombre && monto) {
-      vS[nombre] = (vS[nombre] || 0) + monto;
-    }
+  tabs["COMISIONES"].forEach((r) => {
+    const n = r["VENDEDOR"] || r["NOMBRE"] || "";
+    const v = parseNum(r["MONTO"] || r["TOTAL"] || "");
+    if (n && v) vS[n] = (vS[n] || 0) + v;
   });
 
-  // Detectar tipo por nombre del evento
-  const nombreLower = nombre.toLowerCase();
-  let tipo = "sabado";
-  if (nombreLower.includes("viernes") || nombreLower.includes("friday")) tipo = "viernes";
-  else if (nombreLower.includes("master") || nombreLower.includes("especial")) tipo = "master";
+  const t = nombre.toLowerCase().includes("viernes") ? "viernes"
+    : nombre.toLowerCase().includes("master") ? "master" : "sabado";
 
   return {
-    id:     sheetId,
-    t:      tipo,
-    d:      fecha,
-    nombre: nombre,
-    estado: estado,
-    att:    att,
-    rM:     rM,
-    rP:     rP,
-    rB:     rB,
-    costs: [
-      costPersonal,   // Personal/RRHH
-      0,              // Sonido/Técnica
-      0,              // Seguridad
-      costPersonal,   // Personal
-      costCMV,        // Bebidas CMV
-      0,              // Limpieza
-      0,              // Energía
-      0,              // Marketing
-      costComisiones, // Comisiones
-      costExtras,     // Otros/Extras
-    ],
+    id: sheetId, t, d: fecha, nombre, estado, att,
+    rM: findMonto("mesa"), rP: findMonto("boleter") || findMonto("puerta"), rB: findMonto("barra"),
+    costs: [0,0,0, findMonto("personal"), findMonto("cmv")||findMonto("bebida"), 0,0,0, findMonto("comision"), findMonto("extra")],
     vS,
   };
 }
 
-/* ── Carga todos los eventos del índice ── */
 export async function fetchTodosLosEventos() {
   const indice = await fetchIndice();
-  const eventos = await Promise.all(
-    indice.map((ev) => fetchEvento(ev.sheetId, ev.fecha, ev.nombre, ev.estado))
-  );
-  return eventos;
+  if (!indice.length) return [];
+  return Promise.all(indice.map((ev) => fetchEvento(ev.sheetId, ev.fecha, ev.nombre, ev.estado)));
 }
