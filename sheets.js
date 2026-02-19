@@ -2,6 +2,13 @@ import Papa from "papaparse";
 
 const BASE = "https://docs.google.com/spreadsheets/d";
 
+export const SHEET_IDS = {
+  indice:     "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8",
+  ejecutivo:  "1b9uAf6a6TaZcEJk204SZ_uOScFXWYf1K",
+  proyeccion: "1z32e52_B6xHsduDsCZZFzpXAUwnCfM5aJ5UAZnz1Iis",
+};
+
+/* ── CSV ── */
 export async function fetchSheet(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -11,154 +18,210 @@ export async function fetchSheet(sheetId, tabName) {
   return data;
 }
 
+/* ── JSON (valores calculados) ── */
 async function fetchSheetJSON(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
   const json = JSON.parse(text.replace(/^[^{]+/, "").replace(/\);?\s*$/, ""));
-  const cols = json.table.cols.map((c) => c.label || c.id);
-  return (json.table.rows || []).map((row) => {
-    const obj = {};
-    row.c.forEach((cell, i) => { obj[cols[i]] = cell ? cell.v : null; });
-    return obj;
-  });
+  return (json.table.rows || []).map(row =>
+    row.c.map(cell => cell ? cell.v : null)
+  );
 }
-
-export const SHEET_IDS = {
-  indice:    "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8",
-  ejecutivo: "1b9uAf6a6TaZcEJk204SZ_uOScFXWYf1K",
-};
-
-const MESES = [
-  { num:1,  nombre:"ENE", tab:"ENERO_MENSUAL" },
-  { num:2,  nombre:"FEB", tab:"FEBRERO_MENSUAL" },
-  { num:3,  nombre:"MAR", tab:"MARZO_MENSUAL" },
-  { num:4,  nombre:"ABR", tab:"ABRIL_MENSUAL" },
-  { num:5,  nombre:"MAY", tab:"MAYO_MENSUAL" },
-  { num:6,  nombre:"JUN", tab:"JUNIO_MENSUAL" },
-  { num:7,  nombre:"JUL", tab:"JULIO_MENSUAL" },
-  { num:8,  nombre:"AGO", tab:"AGOSTO_MENSUAL" },
-  { num:9,  nombre:"SEP", tab:"SEPTIEMBRE_MENSUAL" },
-  { num:10, nombre:"OCT", tab:"OCTUBRE_MENSUAL" },
-  { num:11, nombre:"NOV", tab:"NOVIEMBRE_MENSUAL" },
-  { num:12, nombre:"DIC", tab:"DICIEMBRE_MENSUAL" },
-];
 
 function parseNum(val) {
   if (val === null || val === undefined || val === "") return 0;
   if (typeof val === "number") return val;
-  const clean = String(val).replace(/[^0-9.-]/g, "");
-  return parseFloat(clean) || 0;
+  return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
 }
 
-/* ── Leer TOTAL INGRESOS y TOTAL EGRESOS de hoja mensual ── */
+/* ══════════════════════════════════════════════════
+   PROYECCIÓN 2026 — lee de "Egresos detalladosV2"
+   Estructura (columnas por índice):
+     col 0 = CONCEPTO
+     col 4 = MARZO, 5=ABRIL, 6=MAYO, 7=JUNIO,
+             8=JULIO, 9=AGOSTO, 10=SEPTIEMBRE,
+             11=OCTUBRE, 12=NOVIEMBRE
+   Filas clave (0-indexed):
+     fila 1  = INGRESO MENSUAL FECHAS RB
+     fila 7  = INGRESO TOTAL
+     fila 27 = Subtotal Estructura
+     fila 34 = Subtotal Gastos Por Noche
+     fila 43 = Subtotal Gastos Variables
+     fila 44 = GASTO MENSUAL
+     fila 46 = Resultado Operativo
+     fila 47 = Resultado Operativo %
+══════════════════════════════════════════════════ */
+const MESES_PROY = [
+  {nombre:"MAR", mesNum:3},  {nombre:"ABR", mesNum:4},
+  {nombre:"MAY", mesNum:5},  {nombre:"JUN", mesNum:6},
+  {nombre:"JUL", mesNum:7},  {nombre:"AGO", mesNum:8},
+  {nombre:"SEP", mesNum:9},  {nombre:"OCT", mesNum:10},
+  {nombre:"NOV", mesNum:11},
+];
+const COL_START = 4; // columna E = índice 4 = MARZO
+
+export async function fetchProyeccion() {
+  const sheetId = SHEET_IDS.proyeccion;
+  try {
+    const rows = await fetchSheetJSON(sheetId, "Egresos detalladosV2");
+
+    // Buscar filas clave por concepto
+    const findRow = (keyword) =>
+      rows.find(r => String(r[0] || r[1] || "").toUpperCase().includes(keyword.toUpperCase()));
+
+    const rowIngresos  = findRow("INGRESO TOTAL") || findRow("INGRESO MENSUAL");
+    const rowGasto     = findRow("GASTO MENSUAL");
+    const rowResOp     = findRow("RESULTADO OPERATIVO ");  // espacio para evitar el %
+    const rowEstruc    = findRow("SUBTOTAL ESTRUCTURA");
+    const rowNoche     = findRow("SUBTOTAL GASTOS POR NOCHE");
+    const rowVariables = findRow("SUBTOTAL GASTOS VARIABLES");
+
+    // Parsear conceptos de egresos (filas individuales)
+    const egresosConcepto = {};
+    for (const row of rows) {
+      const concepto = String(row[0] || "").trim();
+      if (!concepto || concepto.length < 3) continue;
+      // Sumar todos los meses para ese concepto
+      const total = MESES_PROY.reduce((s, _, i) => s + parseNum(row[COL_START + i]), 0);
+      if (total > 10000) egresosConcepto[concepto] = total;
+    }
+
+    // Armar array de meses
+    const meses = MESES_PROY.map((m, i) => {
+      const col = COL_START + i;
+      const ingresos  = parseNum(rowIngresos?.[col]);
+      const egresos   = parseNum(rowGasto?.[col]);
+      const resultado = rowResOp ? parseNum(rowResOp[col]) : ingresos - egresos;
+      const margen    = ingresos > 0 ? resultado / ingresos : 0;
+      return {
+        mes: m.nombre,
+        mesNombre: m.nombre,
+        mesNum: m.mesNum,
+        ingresos,
+        egresos,
+        resultado,
+        margen,
+        estructura:  parseNum(rowEstruc?.[col]),
+        porNoche:    parseNum(rowNoche?.[col]),
+        variables:   parseNum(rowVariables?.[col]),
+      };
+    });
+
+    const totalIngresos  = meses.reduce((s, m) => s + m.ingresos,  0);
+    const totalEgresos   = meses.reduce((s, m) => s + m.egresos,   0);
+    const totalResultado = meses.reduce((s, m) => s + m.resultado, 0);
+    const margenAnual    = totalIngresos > 0 ? totalResultado / totalIngresos : 0;
+
+    return {
+      meses, totalIngresos, totalEgresos, totalResultado,
+      margenAnual, egresosConcepto, cargado: true,
+    };
+  } catch (e) {
+    console.error("fetchProyeccion:", e);
+    return {
+      meses: [], totalIngresos: 0, totalEgresos: 0,
+      totalResultado: 0, margenAnual: 0, egresosConcepto: {}, cargado: false,
+    };
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   GR EJECUTIVO 2026 — cash flow real por mes
+══════════════════════════════════════════════════ */
+const MESES_EJ = [
+  {num:1,nombre:"ENE",tab:"ENERO_MENSUAL"},
+  {num:2,nombre:"FEB",tab:"FEBRERO_MENSUAL"},
+  {num:3,nombre:"MAR",tab:"MARZO_MENSUAL"},
+  {num:4,nombre:"ABR",tab:"ABRIL_MENSUAL"},
+  {num:5,nombre:"MAY",tab:"MAYO_MENSUAL"},
+  {num:6,nombre:"JUN",tab:"JUNIO_MENSUAL"},
+  {num:7,nombre:"JUL",tab:"JULIO_MENSUAL"},
+  {num:8,nombre:"AGO",tab:"AGOSTO_MENSUAL"},
+  {num:9,nombre:"SEP",tab:"SEPTIEMBRE_MENSUAL"},
+  {num:10,nombre:"OCT",tab:"OCTUBRE_MENSUAL"},
+  {num:11,nombre:"NOV",tab:"NOVIEMBRE_MENSUAL"},
+  {num:12,nombre:"DIC",tab:"DICIEMBRE_MENSUAL"},
+];
+
 async function fetchTotalesMes(sheetId, tab) {
   try {
     const rows = await fetchSheetJSON(sheetId, tab);
-    let totalIngresos = 0;
-    let totalEgresos = 0;
-
+    let totalIngresos = 0, totalEgresos = 0;
     for (const row of rows) {
-      const vals = Object.values(row);
-      // Buscar fila que tenga "TOTAL INGRESOS" en alguna celda
-      const textos = vals.map((v) => String(v || "").toUpperCase());
-      const rowText = textos.join(" ");
-
+      const rowText = row.map(v => String(v || "").toUpperCase()).join(" ");
       if (rowText.includes("TOTAL INGRESOS")) {
-        // El valor está en la columna TOTAL (última columna numérica)
-        for (let i = vals.length - 1; i >= 0; i--) {
-          if (typeof vals[i] === "number" && vals[i] > 0) {
-            totalIngresos = vals[i];
-            break;
-          }
+        for (let i = row.length - 1; i >= 0; i--) {
+          if (typeof row[i] === "number" && row[i] > 0) { totalIngresos = row[i]; break; }
         }
       }
       if (rowText.includes("TOTAL EGRESOS")) {
-        for (let i = vals.length - 1; i >= 0; i--) {
-          if (typeof vals[i] === "number" && vals[i] > 0) {
-            totalEgresos = vals[i];
-            break;
-          }
+        for (let i = row.length - 1; i >= 0; i--) {
+          if (typeof row[i] === "number" && row[i] > 0) { totalEgresos = row[i]; break; }
         }
       }
     }
     return { totalIngresos, totalEgresos };
-  } catch (e) {
-    console.warn(`fetchTotalesMes ${tab}:`, e.message);
-    return { totalIngresos: 0, totalEgresos: 0 };
-  }
+  } catch { return { totalIngresos: 0, totalEgresos: 0 }; }
 }
 
 export async function fetchEjecutivo() {
   const sheetId = SHEET_IDS.ejecutivo;
-  const totalesPorMes = await Promise.all(
-    MESES.map((m) => fetchTotalesMes(sheetId, m.tab))
-  );
-
-  const cashflow = MESES.map((m, i) => {
+  const totalesPorMes = await Promise.all(MESES_EJ.map(m => fetchTotalesMes(sheetId, m.tab)));
+  const cashflow = MESES_EJ.map((m, i) => {
     const { totalIngresos, totalEgresos } = totalesPorMes[i];
-    return {
-      mes: m.nombre,
-      mesNum: m.num,
-      ingresos: totalIngresos,
-      egresos: totalEgresos,
-      resultado: totalIngresos - totalEgresos,
-    };
+    return { mes: m.nombre, mesNum: m.num, ingresos: totalIngresos, egresos: totalEgresos, resultado: totalIngresos - totalEgresos };
   });
-
-  // Egresos por concepto desde PAGOS_MAESTRO via CSV
   let porConcepto = {};
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
-    rows.forEach((r) => {
+    rows.forEach(r => {
       const concepto = r["CONCEPTO"] || "";
       const monto = parseNum(r["MONTO"] || "");
-      if (concepto && monto > 0) {
-        porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
-      }
+      if (concepto && monto > 0) porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
     });
-  } catch (e) { console.warn("PAGOS_MAESTRO:", e.message); }
-
+  } catch {}
   const totalIngresos = cashflow.reduce((s, m) => s + m.ingresos, 0);
-  const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos, 0);
-
+  const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos,  0);
   return { cashflow, totalIngresos, totalEgresos, resultado: totalIngresos - totalEgresos, porConcepto };
 }
 
+/* ══════════════════════════════════════════════════
+   ÍNDICE DE EVENTOS
+══════════════════════════════════════════════════ */
 export async function fetchIndice() {
   const rows = await fetchSheet(SHEET_IDS.indice, "INDICE");
-  return rows.map((r) => ({
+  return rows.map(r => ({
     fecha:   r["FECHA"] || "",
     nombre:  r["NOMBRE EVENTO"] || "",
     sheetId: r["SHEET ID"] || "",
     estado:  r["ESTADO"] || "",
-  })).filter((r) => r.sheetId && !r.sheetId.includes("EJEMPLO"));
+  })).filter(r => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
 
+/* ══════════════════════════════════════════════════
+   EVENTO INDIVIDUAL
+══════════════════════════════════════════════════ */
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
   const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
-  await Promise.all(Object.keys(tabs).map(async (tab) => {
+  await Promise.all(Object.keys(tabs).map(async tab => {
     try { tabs[tab] = await fetchSheet(sheetId, tab); } catch { tabs[tab] = []; }
   }));
-
   const resumen = tabs["RESUMEN"];
-  const findMonto = (kw) => {
-    const row = resumen.find((r) => Object.values(r).some((v) => String(v).toLowerCase().includes(kw.toLowerCase())));
+  const findMonto = kw => {
+    const row = resumen.find(r => Object.values(r).some(v => String(v).toLowerCase().includes(kw.toLowerCase())));
     return row ? parseNum(row["MONTO"] || row["TOTAL"] || "") : 0;
   };
-
   const att = tabs["BOLETERIA"].reduce((s, r) => s + parseNum(r["CANTIDAD"] || ""), 0);
   const vS = {};
-  tabs["COMISIONES"].forEach((r) => {
+  tabs["COMISIONES"].forEach(r => {
     const n = r["VENDEDOR"] || r["NOMBRE"] || "";
     const v = parseNum(r["MONTO"] || r["TOTAL"] || "");
     if (n && v) vS[n] = (vS[n] || 0) + v;
   });
-
   const t = nombre.toLowerCase().includes("viernes") ? "viernes"
     : nombre.toLowerCase().includes("master") ? "master" : "sabado";
-
   return {
     id: sheetId, t, d: fecha, nombre, estado, att,
     rM: findMonto("mesa"), rP: findMonto("boleter") || findMonto("puerta"), rB: findMonto("barra"),
@@ -170,5 +233,5 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
 export async function fetchTodosLosEventos() {
   const indice = await fetchIndice();
   if (!indice.length) return [];
-  return Promise.all(indice.map((ev) => fetchEvento(ev.sheetId, ev.fecha, ev.nombre, ev.estado)));
+  return Promise.all(indice.map(ev => fetchEvento(ev.sheetId, ev.fecha, ev.nombre, ev.estado)));
 }
