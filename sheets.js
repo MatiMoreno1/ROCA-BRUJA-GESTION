@@ -2,6 +2,7 @@ import Papa from "papaparse";
 
 const BASE = "https://docs.google.com/spreadsheets/d";
 
+/* ── Fetch via CSV (para datos simples) ── */
 export async function fetchSheet(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -9,6 +10,24 @@ export async function fetchSheet(sheetId, tabName) {
   const text = await res.text();
   const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
   return data;
+}
+
+/* ── Fetch via JSON (devuelve valores calculados, no fórmulas) ── */
+async function fetchSheetJSON(sheetId, tabName) {
+  const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  // Google devuelve /*O_o*/\ngoogle.visualization.Query.setResponse({...})
+  const json = JSON.parse(text.replace(/^[^{]+/, "").replace(/\);?\s*$/, ""));
+  const cols = json.table.cols.map((c) => c.label || c.id);
+  return (json.table.rows || []).map((row) => {
+    const obj = {};
+    row.c.forEach((cell, i) => {
+      obj[cols[i]] = cell ? cell.v : null;
+    });
+    return obj;
+  });
 }
 
 export const SHEET_IDS = {
@@ -32,48 +51,71 @@ const MESES = [
 ];
 
 function parseNum(val) {
-  if (!val && val !== 0) return 0;
+  if (val === null || val === undefined || val === "") return 0;
   if (typeof val === "number") return val;
   const clean = String(val).replace(/[^0-9.-]/g, "");
   return parseFloat(clean) || 0;
 }
 
+/* ── Leer ingresos de hoja mensual via JSON (valores calculados) ── */
 async function fetchIngresosMes(sheetId, tab) {
   try {
-    const rows = await fetchSheet(sheetId, tab);
+    const rows = await fetchSheetJSON(sheetId, tab);
     let total = 0;
+    let enIngresos = false;
+
     for (const row of rows) {
-      const concepto = (row["CONCEPTO"] || "").toUpperCase();
-      const monto = parseNum(row["TOTAL"] || row["total"] || "");
-      if (monto > 0 && !concepto.includes("TOTAL") && !concepto.includes("EGRESO")) {
-        total += monto;
+      // Los valores vienen por índice de columna en JSON
+      const vals = Object.values(row);
+      const textos = vals.map((v) => String(v || "").toUpperCase());
+      const rowText = textos.join(" ");
+
+      if (rowText.includes("INGRESO") && !rowText.includes("TOTAL")) enIngresos = true;
+      if (rowText.includes("EGRESO") || rowText.includes("COSTO")) { enIngresos = false; continue; }
+      if (rowText.includes("TOTAL INGRESO")) continue;
+
+      if (enIngresos) {
+        // Buscar el primer valor numérico positivo en la fila
+        for (const v of vals) {
+          if (typeof v === "number" && v > 0) {
+            total += v;
+            break;
+          }
+        }
       }
     }
     return total;
-  } catch { return 0; }
+  } catch (e) {
+    console.warn(`fetchIngresosMes ${tab}:`, e.message);
+    return 0;
+  }
 }
 
+/* ── Leer egresos de PAGOS_MAESTRO via JSON ── */
 async function fetchPagosMaestro(sheetId) {
   try {
-    const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
+    const rows = await fetchSheetJSON(sheetId, "PAGOS_MAESTRO");
     const porMes = {};
     const porConcepto = {};
 
     for (const row of rows) {
-      const fecha    = row["FECHA"] || "";
-      const concepto = row["CONCEPTO"] || "";
-      const monto    = parseNum(row["MONTO"] || "");
+      // Columnas: FECHA, CONCEPTO, SUB-CONCEPTO, MONTO, MES, ESTADO, NOTAS
+      const vals = Object.values(row);
+      const fecha    = vals[0]; // Date object o string
+      const concepto = String(vals[1] || "");
+      const monto    = typeof vals[3] === "number" ? vals[3] : parseNum(vals[3]);
+
       if (!fecha || !concepto || monto <= 0) continue;
 
+      // Extraer mes
       let mes = null;
-      if (fecha.includes("/")) {
-        const p = fecha.split("/");
-        mes = p.length === 3 ? parseInt(p[1]) : null;
-      } else if (fecha.includes("-")) {
-        const p = fecha.split("-");
-        mes = p.length === 3 ? parseInt(p[1]) : null;
+      if (fecha instanceof Date || (typeof fecha === "object" && fecha !== null)) {
+        mes = new Date(fecha).getMonth() + 1;
+      } else if (typeof fecha === "string") {
+        const p = fecha.includes("/") ? fecha.split("/") : fecha.split("-");
+        mes = p.length === 3 ? parseInt(fecha.includes("/") ? p[1] : p[1]) : null;
       }
-      if (!mes) continue;
+      if (!mes || mes < 1 || mes > 12) continue;
 
       if (!porMes[mes]) porMes[mes] = { total: 0, porConcepto: {} };
       porMes[mes].total += monto;
@@ -81,9 +123,13 @@ async function fetchPagosMaestro(sheetId) {
       porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
     }
     return { porMes, porConcepto };
-  } catch { return { porMes: {}, porConcepto: {} }; }
+  } catch (e) {
+    console.warn("fetchPagosMaestro:", e.message);
+    return { porMes: {}, porConcepto: {} };
+  }
 }
 
+/* ── Función principal: cargar todo el ejecutivo ── */
 export async function fetchEjecutivo() {
   const sheetId = SHEET_IDS.ejecutivo;
   const [pagos, ...ingresosPorMes] = await Promise.all([
@@ -109,6 +155,7 @@ export async function fetchEjecutivo() {
   };
 }
 
+/* ── Índice de eventos ── */
 export async function fetchIndice() {
   const rows = await fetchSheet(SHEET_IDS.indice, "INDICE");
   return rows.map((r) => ({
@@ -119,6 +166,7 @@ export async function fetchIndice() {
   })).filter((r) => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
 
+/* ── Evento individual ── */
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
   const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
   await Promise.all(Object.keys(tabs).map(async (tab) => {
@@ -150,6 +198,7 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
   };
 }
 
+/* ── Todos los eventos ── */
 export async function fetchTodosLosEventos() {
   const indice = await fetchIndice();
   if (!indice.length) return [];
