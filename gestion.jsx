@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchTodosLosEventos } from "./sheets.js";
+import { fetchTodosLosEventos, fetchEjecutivo } from "./sheets.js";
 
 /* ═══════════════════════════════════════════
    ROCA BRUJA — SISTEMA DE GESTIÓN v3.1
@@ -106,9 +106,13 @@ export default function GestionRB() {
   const [editFxVal, setEditFxVal] = useState("");
   const [newVName, setNewVName] = useState("");
   const [newVCom, setNewVCom] = useState(10);
+  const [ejecutivo, setEjecutivo] = useState(null);
 
   /* ── Fetch desde Google Sheets al montar ── */
   useEffect(() => {
+    // Cargar ejecutivo en paralelo
+    fetchEjecutivo().then(setEjecutivo).catch(console.error);
+
     setLoading(true);
     fetchTodosLosEventos()
       .then((evts) => {
@@ -645,41 +649,83 @@ export default function GestionRB() {
      TAB 6: CASH FLOW
      ═══════════════════════════════════ */
   const renderCash = () => {
-    var monthly = MOS.map((m) => ({ m, rev: 0, cost: 0, fx: fxTotal, net: 0, running: 0 }));
-    events.forEach((e) => {
-      var mo = e.d ? parseInt(e.d.split("-")[1], 10) : 3;
-      var idx = mo - 3;
-      if (idx >= 0 && idx < MOS.length) {
-        var info = ev$(e);
-        monthly[idx].rev += info.rev;
-        monthly[idx].cost += info.cost;
-      }
-    });
-    var running = 0;
-    monthly.forEach((m) => { m.net = m.rev - m.cost - m.fx; running += m.net; m.running = running; });
+    // Usar datos del ejecutivo si están disponibles, sino calcular desde eventos
+    var monthly;
+    var fuente = "eventos";
+
+    if (ejecutivo && ejecutivo.cashflow && ejecutivo.cashflow.length > 0) {
+      fuente = "ejecutivo";
+      var running = 0;
+      monthly = ejecutivo.cashflow.map((m) => {
+        running += m.resultado;
+        return { m: m.mes, rev: m.ingresos, cost: m.egresos, fx: 0, net: m.resultado, running };
+      });
+    } else {
+      monthly = MOS.map((m) => ({ m, rev: 0, cost: 0, fx: fxTotal, net: 0, running: 0 }));
+      events.forEach((e) => {
+        var mo = e.d ? parseInt(e.d.split("-")[1], 10) : 3;
+        var idx = mo - 3;
+        if (idx >= 0 && idx < MOS.length) {
+          var info = ev$(e);
+          monthly[idx].rev += info.rev;
+          monthly[idx].cost += info.cost;
+        }
+      });
+      var running = 0;
+      monthly.forEach((m) => { m.net = m.rev - m.cost - m.fx; running += m.net; m.running = running; });
+    }
+
+    var totalAcum = monthly[monthly.length - 1]?.running || 0;
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Cash Flow Mensual</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Cash Flow Mensual</div>
+          <span style={{ fontSize: 11, fontFamily: C.mono, color: fuente === "ejecutivo" ? C.g : C.y }}>
+            {fuente === "ejecutivo" ? "✓ GR Ejecutivo 2026" : "⚠ datos de ejemplo"}
+          </span>
+        </div>
+
+        {ejecutivo && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <Stat label="Ingresos Totales" value={f(ejecutivo.totalIngresos)} color={C.g} />
+            <Stat label="Egresos Totales" value={f(ejecutivo.totalEgresos)} color={C.o} />
+            <Stat label="Resultado" value={f(ejecutivo.resultado)} color={ejecutivo.resultado >= 0 ? C.g : C.r} />
+          </div>
+        )}
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-          <Stat label="Acumulado" value={f(running)} color={running >= 0 ? C.g : C.r} />
+          <Stat label="Acumulado" value={f(totalAcum)} color={totalAcum >= 0 ? C.g : C.r} />
           <Stat label="Meses Negativos" value={monthly.filter((m) => m.net < 0).length} color={C.r} />
         </div>
+
         <div style={bx()}>
-          <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr 1fr", gap: 8, padding: "6px 0", fontSize: 11, color: C.t2, fontFamily: C.mono, borderBottom: "1px solid " + C.bd, marginBottom: 4 }}>
-            <span>Mes</span><span style={{ textAlign: "right" }}>Revenue</span>
-            <span style={{ textAlign: "right" }}>Variable</span><span style={{ textAlign: "right" }}>Fijos</span>
-            <span style={{ textAlign: "right" }}>Neto</span>
+          <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr", gap: 8, padding: "6px 0", fontSize: 11, color: C.t2, fontFamily: C.mono, borderBottom: "1px solid " + C.bd, marginBottom: 4 }}>
+            <span>Mes</span>
+            <span style={{ textAlign: "right" }}>Ingresos</span>
+            <span style={{ textAlign: "right" }}>Egresos</span>
+            <span style={{ textAlign: "right" }}>Resultado</span>
           </div>
           {monthly.map((m, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr 1fr", gap: 8, padding: "6px 0", borderBottom: "1px solid " + C.s2, fontSize: 12, fontFamily: C.mono }}>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr", gap: 8, padding: "6px 0", borderBottom: "1px solid " + C.s2, fontSize: 12, fontFamily: C.mono }}>
               <span style={{ color: C.tx, fontWeight: 600 }}>{m.m}</span>
               <span style={{ color: C.g, textAlign: "right" }}>{f(m.rev)}</span>
               <span style={{ color: C.o, textAlign: "right" }}>{f(m.cost)}</span>
-              <span style={{ color: C.y, textAlign: "right" }}>{f(m.fx)}</span>
               <span style={{ color: m.net >= 0 ? C.g : C.r, textAlign: "right", fontWeight: 700 }}>{f(m.net)}</span>
             </div>
           ))}
         </div>
+
+        {ejecutivo && Object.keys(ejecutivo.porConcepto || {}).length > 0 && (
+          <div style={bx()}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Egresos por Concepto</div>
+            <Bar items={Object.entries(ejecutivo.porConcepto)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 8)
+              .map(([k, v]) => ({ l: k.length > 14 ? k.slice(0, 13) + "." : k, v, c: C.o }))} />
+          </div>
+        )}
+
         <div style={bx()}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>Saldo Acumulado</div>
           <Bar items={monthly.map((m) => ({ l: m.m, v: m.running, c: m.running >= 0 ? C.g : C.r }))} />
