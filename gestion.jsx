@@ -52,12 +52,12 @@ const EVT0 = [
 /* ── Helpers ── */
 const f = (v) => {
   if (v == null) return "$0";
-  const a = Math.abs(v);
+  const a = Math.abs(Math.round(v));
   const s = v < 0 ? "-" : "";
   if (a >= 1e9) return s + "$" + (a / 1e9).toFixed(1) + "B";
   if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(1) + "M";
   if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(0) + "K";
-  return "$" + a.toLocaleString("es-AR");
+  return (v < 0 ? "-" : "") + "$" + a.toLocaleString("es-AR");
 };
 const ff = (v) => "$" + (v || 0).toLocaleString("es-AR");
 const pct = (v) => ((v || 0) * 100).toFixed(1) + "%";
