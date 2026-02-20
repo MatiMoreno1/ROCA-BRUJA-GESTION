@@ -13,8 +13,13 @@ export async function fetchSheet(sheetId, tabName) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
+  if (tabName !== "PAGOS_MAESTRO") {
+    const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
+    return data;
+  }
   const lines = text.split("\n");
-  const csvData = tabName === "PAGOS_MAESTRO" ? lines.slice(1).join("\n") : text;
+  const headerIdx = lines.findIndex(l => l.includes("FECHA") && l.includes("CONCEPTO") && l.includes("MONTO"));
+  const csvData = headerIdx >= 0 ? lines.slice(headerIdx).join("\n") : lines.slice(1).join("\n");
   const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
   return data;
 }
