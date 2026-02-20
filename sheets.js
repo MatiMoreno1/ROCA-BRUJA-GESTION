@@ -21,7 +21,11 @@ export async function fetchSheet(sheetId, tabName) {
   const lines = text.split("\n");
   const headerIdx = lines.findIndex(l => l.includes("FECHA") && l.includes("CONCEPTO") && l.includes("MONTO"));
   const csvData = headerIdx >= 0 ? lines.slice(headerIdx).join("\n") : lines.slice(1).join("\n");
-  const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
+  const { data } = Papa.parse(csvData, { 
+    header: true, 
+    skipEmptyLines: true,
+    transformHeader: h => h.trim()
+  });
   return data;
 }
 
