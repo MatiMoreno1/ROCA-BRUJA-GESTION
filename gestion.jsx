@@ -1,10 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchTodosLosEventos, fetchEjecutivo } from "./sheets.js";
 
-/* ═══════════════════════════════════════════
-   ROCA BRUJA — SISTEMA DE GESTIÓN v3.1
-   ═══════════════════════════════════════════ */
-
 const C = {
   bg:"#060609", s1:"#0e0e14", s2:"#16161f", s3:"#1e1e2a",
   tx:"#e2e2e6", t2:"#9999a8", bd:"#2a2a3a",
@@ -36,7 +32,6 @@ const VEND0 = [
   {n:"Martu P",com:10},{n:"Sofi R",com:10},{n:"Nico B",com:8},{n:"Valen G",com:10}
 ];
 
-// Datos de fallback (se usan si falla el fetch)
 const EVT0 = [
   { id:1, t:"sabado", d:"2026-03-07", att:980, rM:1800000, rP:2940000, rB:1470000,
     costs:[850000,280000,350000,420000,735000,80000,65000,180000,294000,50000],
@@ -49,7 +44,6 @@ const EVT0 = [
     vS:{"Juan L":620000,"Nacho Zava":780000,"Fio H":510000,"Valen G":390000} },
 ];
 
-/* ── Helpers ── */
 const f = (v) => {
   if (v == null) return "$0";
   const a = Math.abs(Math.round(v));
@@ -69,7 +63,6 @@ const ev$ = (e) => {
 };
 const sumFx = (fx) => Object.values(fx).reduce((s, v) => s + v, 0);
 
-/* ── Style helpers ── */
 const bx = (extra) => ({
   background: C.s1, border: "1px solid " + C.bd,
   borderRadius: 12, padding: 16, ...(extra || {})
@@ -83,7 +76,6 @@ const pillSt = (active, color) => ({
   borderColor: active ? color + "44" : "transparent"
 });
 
-/* ═══ MAIN COMPONENT ═══ */
 export default function GestionRB() {
   const [tab, setTab] = useState(0);
   const [events, setEvents] = useState(EVT0);
@@ -108,11 +100,8 @@ export default function GestionRB() {
   const [newVCom, setNewVCom] = useState(10);
   const [ejecutivo, setEjecutivo] = useState(null);
 
-  /* ── Fetch desde Google Sheets al montar ── */
   useEffect(() => {
-    // Cargar ejecutivo en paralelo
     fetchEjecutivo().then(setEjecutivo).catch(console.error);
-
     setLoading(true);
     fetchTodosLosEventos()
       .then((evts) => {
@@ -130,7 +119,6 @@ export default function GestionRB() {
       .finally(() => setLoading(false));
   }, []);
 
-  /* ── Computed ── */
   const totals = events.reduce((acc, e) => {
     const { rev, cost, net } = ev$(e);
     acc.rev += rev; acc.cost += cost; acc.net += net; acc.att += (e.att || 0);
@@ -146,7 +134,6 @@ export default function GestionRB() {
     "Escenarios", "Vendedores", "Cash Flow", "Costos", "Admin"
   ];
 
-  /* ── Micro components ── */
   const Stat = (props) => (
     <div style={bx({ flex: "1 1 200px", minWidth: 160 })}>
       <div style={{ fontSize: 11, color: C.t2, fontFamily: C.mono, textTransform: "uppercase", marginBottom: 4 }}>
@@ -227,37 +214,25 @@ export default function GestionRB() {
     </button>
   );
 
-  /* ── Banner de estado de carga ── */
   const LoadBanner = () => {
     if (loading) return (
-      <div style={{
-        padding: "8px 16px", background: C.b + "18", border: "1px solid " + C.b + "44",
-        borderRadius: 8, fontSize: 12, color: C.b, fontFamily: C.mono, marginBottom: 12
-      }}>
+      <div style={{ padding: "8px 16px", background: C.b + "18", border: "1px solid " + C.b + "44", borderRadius: 8, fontSize: 12, color: C.b, fontFamily: C.mono, marginBottom: 12 }}>
         ⟳ Cargando datos desde Google Sheets...
       </div>
     );
     if (loadError) return (
-      <div style={{
-        padding: "8px 16px", background: C.y + "18", border: "1px solid " + C.y + "44",
-        borderRadius: 8, fontSize: 12, color: C.y, fontFamily: C.mono, marginBottom: 12
-      }}>
+      <div style={{ padding: "8px 16px", background: C.y + "18", border: "1px solid " + C.y + "44", borderRadius: 8, fontSize: 12, color: C.y, fontFamily: C.mono, marginBottom: 12 }}>
         ⚠ {loadError}
       </div>
     );
     return (
-      <div style={{
-        padding: "8px 16px", background: C.g + "18", border: "1px solid " + C.g + "44",
-        borderRadius: 8, fontSize: 12, color: C.g, fontFamily: C.mono, marginBottom: 12
-      }}>
+      <div style={{ padding: "8px 16px", background: C.g + "18", border: "1px solid " + C.g + "44", borderRadius: 8, fontSize: 12, color: C.g, fontFamily: C.mono, marginBottom: 12 }}>
         ✓ {events.length} eventos cargados desde Google Sheets
       </div>
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 0: DASHBOARD
-     ═══════════════════════════════════ */
+  /* ═══ TAB 0: DASHBOARD ═══ */
   const renderDash = () => {
     const revByType = TYPES.map((tp) => {
       const evs = events.filter((e) => e.t === tp.id);
@@ -267,18 +242,42 @@ export default function GestionRB() {
     const margin = totals.rev > 0 ? totals.net / totals.rev : 0;
     const netAfterFx = totals.net - fxTotal;
 
+    // Ingresos de eventos (Mesas + Puerta + Barra)
+    const revMesas  = events.reduce((s, e) => s + (e.rM || 0), 0);
+    const revPuerta = events.reduce((s, e) => s + (e.rP || 0), 0);
+    const revBarra  = events.reduce((s, e) => s + (e.rB || 0), 0);
+    const revEventos = revMesas + revPuerta + revBarra;
+
+    // Venta de Mercadería = Total GR Anual - ingresos de eventos
+    const revMercaderia = ejecutivo && ejecutivo.totalIngresos > 0
+      ? Math.max(ejecutivo.totalIngresos - revEventos, 0)
+      : 0;
+
+    // Revenue Total real (incluye mercadería si hay datos del ejecutivo)
+    const revTotal = ejecutivo && ejecutivo.totalIngresos > 0
+      ? ejecutivo.totalIngresos
+      : totals.rev;
+
+    const revMixItems = [
+      { l: "Mesas",      v: revMesas,      c: C.y },
+      { l: "Puerta",     v: revPuerta,     c: C.g },
+      { l: "Barra",      v: revBarra,      c: C.b },
+    ];
+    if (revMercaderia > 0) {
+      revMixItems.push({ l: "Mercadería", v: revMercaderia, c: C.p });
+    }
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Resumen Ejecutivo
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Resumen Ejecutivo</div>
         <LoadBanner />
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <Stat label="Eventos" value={events.length} sub={"BE: " + breakEven + " eventos"} color={C.b} />
           <Stat label="Asistencia" value={totals.att.toLocaleString()}
             sub={events.length > 0 ? "Prom: " + Math.round(totals.att / events.length) : "-"} color={C.v} />
-          <Stat label="Revenue Total" value={f(totals.rev)} color={C.g} />
+          <Stat label="Revenue Total" value={f(revTotal)}
+            sub={revMercaderia > 0 ? "Incl. mercadería" : ""} color={C.g} />
           <Stat label="Costos Variables" value={f(totals.cost)} color={C.o} />
         </div>
 
@@ -293,35 +292,22 @@ export default function GestionRB() {
         </div>
 
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12, fontFamily: C.sans }}>
-            Revenue por Tipo
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12, fontFamily: C.sans }}>Revenue por Tipo</div>
           <Bar items={revByType} />
         </div>
 
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12, fontFamily: C.sans }}>
-            Revenue Mix
-          </div>
-          <Bar items={[
-            { l: "Mesas", v: events.reduce((s, e) => s + (e.rM || 0), 0), c: C.y },
-            { l: "Puerta", v: events.reduce((s, e) => s + (e.rP || 0), 0), c: C.g },
-            { l: "Barra", v: events.reduce((s, e) => s + (e.rB || 0), 0), c: C.b }
-          ]} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12, fontFamily: C.sans }}>Revenue Mix</div>
+          <Bar items={revMixItems} />
         </div>
 
         <div style={bx()}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12, fontFamily: C.sans }}>
-            Eventos Recientes
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12, fontFamily: C.sans }}>Eventos Recientes</div>
           {events.slice(-4).reverse().map((e) => {
             const { rev, net, margin: mg } = ev$(e);
             const tp = et(e.t);
             return (
-              <div key={e.id} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "8px 0", borderBottom: "1px solid " + C.bd
-              }}>
+              <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.bd }}>
                 <div>
                   <span style={{ color: tp.c, fontFamily: C.mono, fontSize: 12, marginRight: 8 }}>{tp.l}</span>
                   <span style={{ color: C.t2, fontSize: 12 }}>{e.d}</span>
@@ -329,9 +315,7 @@ export default function GestionRB() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 13 }}>{f(rev)}</span>
-                  <span style={{ color: net >= 0 ? C.g : C.r, fontFamily: C.mono, fontSize: 12, marginLeft: 8 }}>
-                    {pct(mg)}
-                  </span>
+                  <span style={{ color: net >= 0 ? C.g : C.r, fontFamily: C.mono, fontSize: 12, marginLeft: 8 }}>{pct(mg)}</span>
                 </div>
               </div>
             );
@@ -341,9 +325,7 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 1: CERRAR EVENTO
-     ═══════════════════════════════════ */
+  /* ═══ TAB 1: CERRAR EVENTO ═══ */
   const renderCerrar = () => {
     var steps = ["Tipo y Fecha", "Ingresos", "Costos", "Vendedores", "Confirmar"];
     var upC = (k, v) => setCData({ ...cData, [k]: v });
@@ -351,7 +333,6 @@ export default function GestionRB() {
     var upVS = (n, v) => setCData({ ...cData, vS: { ...cData.vS, [n]: v } });
     var cRev = (cData.rM || 0) + (cData.rP || 0) + (cData.rB || 0);
     var cCost = cData.costs.reduce((s, c) => s + c, 0);
-
     var doSave = () => {
       var newEvt = { ...cData, id: Date.now(), vS: { ...cData.vS } };
       setEvents([...events, newEvt]);
@@ -359,26 +340,18 @@ export default function GestionRB() {
       setCData({ t: "sabado", d: "", att: 0, rM: 0, rP: 0, rB: 0, costs: CATS.map(() => 0), vS: {} });
       setTab(2);
     };
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Cerrar Evento</div>
         <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
           {steps.map((s, i) => (
-            <div key={i} onClick={() => setCStep(i)} style={{
-              flex: 1, textAlign: "center", padding: "6px 0", fontSize: 11,
-              fontFamily: C.mono, cursor: "pointer",
-              color: i === cStep ? C.g : C.t2,
-              borderBottom: i === cStep ? "2px solid " + C.g : "2px solid " + C.bd
-            }}>{s}</div>
+            <div key={i} onClick={() => setCStep(i)} style={{ flex: 1, textAlign: "center", padding: "6px 0", fontSize: 11, fontFamily: C.mono, cursor: "pointer", color: i === cStep ? C.g : C.t2, borderBottom: i === cStep ? "2px solid " + C.g : "2px solid " + C.bd }}>{s}</div>
           ))}
         </div>
         {cStep === 0 && (
           <div style={bx()}>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              {TYPES.map((tp) => (
-                <button key={tp.id} onClick={() => upC("t", tp.id)} style={pillSt(cData.t === tp.id, tp.c)}>{tp.l}</button>
-              ))}
+              {TYPES.map((tp) => <button key={tp.id} onClick={() => upC("t", tp.id)} style={pillSt(cData.t === tp.id, tp.c)}>{tp.l}</button>)}
             </div>
             <Inp label="Fecha" value={cData.d} onChange={(v) => upC("d", v)} type="date" />
             <Inp label="Asistencia" value={cData.att} onChange={(v) => upC("att", v)} />
@@ -406,10 +379,7 @@ export default function GestionRB() {
         )}
         {cStep === 3 && (
           <div style={bx()}>
-            {vendors.map((v) => (
-              <Inp key={v.n} label={v.n + " (" + v.com + "%)"}
-                value={cData.vS[v.n] || 0} onChange={(val) => upVS(v.n, val)} />
-            ))}
+            {vendors.map((v) => <Inp key={v.n} label={v.n + " (" + v.com + "%)"} value={cData.vS[v.n] || 0} onChange={(val) => upVS(v.n, val)} />)}
           </div>
         )}
         {cStep === 4 && (
@@ -434,31 +404,19 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 2: EVENTOS
-     ═══════════════════════════════════ */
+  /* ═══ TAB 2: EVENTOS ═══ */
   const renderEvts = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>
-          Eventos ({events.length})
-        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Eventos ({events.length})</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Btn onClick={() => {
-            setLoading(true);
-            fetchTodosLosEventos()
-              .then((evts) => { if (evts?.length) setEvents(evts); })
-              .catch(console.error)
-              .finally(() => setLoading(false));
-          }} color={C.b} outline>↺ Sync</Btn>
+          <Btn onClick={() => { setLoading(true); fetchTodosLosEventos().then((evts) => { if (evts?.length) setEvents(evts); }).catch(console.error).finally(() => setLoading(false)); }} color={C.b} outline>↺ Sync</Btn>
           <Btn onClick={() => { setTab(1); setCStep(0); }} color={C.g}>+ Nuevo</Btn>
         </div>
       </div>
       <LoadBanner />
       {events.map((e) => {
-        var info = ev$(e);
-        var tp = et(e.t);
-        var isExp = expandedEvt === e.id;
+        var info = ev$(e); var tp = et(e.t); var isExp = expandedEvt === e.id;
         return (
           <div key={e.id} style={bx({ cursor: "pointer" })} onClick={() => setExpandedEvt(isExp ? null : e.id)}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -467,13 +425,7 @@ export default function GestionRB() {
                 <span style={{ color: C.t2, fontSize: 12, marginLeft: 8 }}>{e.d}</span>
                 {e.nombre && <span style={{ color: C.t2, fontSize: 11, marginLeft: 6 }}>— {e.nombre}</span>}
                 <span style={{ color: C.t2, fontSize: 11, marginLeft: 8 }}>({e.att} pers)</span>
-                {e.estado && (
-                  <span style={{
-                    marginLeft: 8, fontSize: 10, padding: "2px 6px", borderRadius: 4, fontFamily: C.mono,
-                    background: e.estado === "EN VIVO" ? C.g + "22" : e.estado === "CERRADO" ? C.t2 + "22" : C.y + "22",
-                    color: e.estado === "EN VIVO" ? C.g : e.estado === "CERRADO" ? C.t2 : C.y,
-                  }}>{e.estado}</span>
-                )}
+                {e.estado && <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 6px", borderRadius: 4, fontFamily: C.mono, background: e.estado === "EN VIVO" ? C.g + "22" : e.estado === "CERRADO" ? C.t2 + "22" : C.y + "22", color: e.estado === "EN VIVO" ? C.g : e.estado === "CERRADO" ? C.t2 : C.y }}>{e.estado}</span>}
               </div>
               <div>
                 <span style={{ color: C.tx, fontFamily: C.mono, fontSize: 14 }}>{f(info.rev)}</span>
@@ -517,15 +469,11 @@ export default function GestionRB() {
     </div>
   );
 
-  /* ═══════════════════════════════════
-     TAB 3: COMPARAR
-     ═══════════════════════════════════ */
+  /* ═══ TAB 3: COMPARAR ═══ */
   const renderCompare = () => {
     if (events.length < 2) return <div style={bx()}><span style={{ color: C.t2 }}>Necesitás al menos 2 eventos para comparar.</span></div>;
-    var a = events[cmpA] || events[0];
-    var b2 = events[cmpB] || events[1];
-    var pa = ev$(a); var pb = ev$(b2);
-    var tpa = et(a.t); var tpb = et(b2.t);
+    var a = events[cmpA] || events[0]; var b2 = events[cmpB] || events[1];
+    var pa = ev$(a); var pb = ev$(b2); var tpa = et(a.t); var tpb = et(b2.t);
     var CmpRow = (rp) => (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", padding: "6px 0", borderBottom: "1px solid " + C.s2 }}>
         <span style={{ color: C.t2, fontSize: 12 }}>{rp.label}</span>
@@ -563,14 +511,11 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 4: ESCENARIOS
-     ═══════════════════════════════════ */
+  /* ═══ TAB 4: ESCENARIOS ═══ */
   const renderScenarios = () => {
     var adjRev = totals.rev * (1 + scPrice / 100) * (1 + scVol / 100);
     var adjCost = totals.cost * (1 + scCost / 100) * (1 + scVol / 100);
-    var adjNet = adjRev - adjCost;
-    var adjNetFx = adjNet - fxTotal;
+    var adjNet = adjRev - adjCost; var adjNetFx = adjNet - fxTotal;
     var adjMargin = adjRev > 0 ? adjNet / adjRev : 0;
     var presets = [
       { l: "Optimista", vol: 15, price: 10, cost: -5, c: C.g },
@@ -608,17 +553,14 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 5: VENDEDORES
-     ═══════════════════════════════════ */
+  /* ═══ TAB 5: VENDEDORES ═══ */
   const renderVend = () => {
     var vendTotals = {};
     vendors.forEach((v) => { vendTotals[v.n] = { sales: 0, events: 0, com: v.com }; });
     events.forEach((e) => {
       Object.entries(e.vS || {}).forEach(([n, v]) => {
         if (!vendTotals[n]) vendTotals[n] = { sales: 0, events: 0, com: 10 };
-        vendTotals[n].sales += v;
-        vendTotals[n].events += 1;
+        vendTotals[n].sales += v; vendTotals[n].events += 1;
       });
     });
     var ranked = Object.entries(vendTotals).sort((a, b) => b[1].sales - a[1].sales);
@@ -645,14 +587,9 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 6: CASH FLOW
-     ═══════════════════════════════════ */
+  /* ═══ TAB 6: CASH FLOW ═══ */
   const renderCash = () => {
-    // Usar datos del ejecutivo si están disponibles, sino calcular desde eventos
-    var monthly;
-    var fuente = "eventos";
-
+    var monthly; var fuente = "eventos";
     if (ejecutivo && ejecutivo.cashflow && ejecutivo.cashflow.length > 0) {
       fuente = "ejecutivo";
       var running = 0;
@@ -665,18 +602,12 @@ export default function GestionRB() {
       events.forEach((e) => {
         var mo = e.d ? parseInt(e.d.split("-")[1], 10) : 3;
         var idx = mo - 3;
-        if (idx >= 0 && idx < MOS.length) {
-          var info = ev$(e);
-          monthly[idx].rev += info.rev;
-          monthly[idx].cost += info.cost;
-        }
+        if (idx >= 0 && idx < MOS.length) { var info = ev$(e); monthly[idx].rev += info.rev; monthly[idx].cost += info.cost; }
       });
-      var running = 0;
-      monthly.forEach((m) => { m.net = m.rev - m.cost - m.fx; running += m.net; m.running = running; });
+      var running2 = 0;
+      monthly.forEach((m) => { m.net = m.rev - m.cost - m.fx; running2 += m.net; m.running = running2; });
     }
-
     var totalAcum = monthly[monthly.length - 1]?.running || 0;
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -685,7 +616,6 @@ export default function GestionRB() {
             {fuente === "ejecutivo" ? "✓ GR Ejecutivo 2026" : "⚠ datos de ejemplo"}
           </span>
         </div>
-
         {ejecutivo && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
             <Stat label="Ingresos Totales" value={f(ejecutivo.totalIngresos)} color={C.g} />
@@ -693,18 +623,13 @@ export default function GestionRB() {
             <Stat label="Resultado" value={f(ejecutivo.resultado)} color={ejecutivo.resultado >= 0 ? C.g : C.r} />
           </div>
         )}
-
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <Stat label="Acumulado" value={f(totalAcum)} color={totalAcum >= 0 ? C.g : C.r} />
           <Stat label="Meses Negativos" value={monthly.filter((m) => m.net < 0).length} color={C.r} />
         </div>
-
         <div style={bx()}>
           <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr", gap: 8, padding: "6px 0", fontSize: 11, color: C.t2, fontFamily: C.mono, borderBottom: "1px solid " + C.bd, marginBottom: 4 }}>
-            <span>Mes</span>
-            <span style={{ textAlign: "right" }}>Ingresos</span>
-            <span style={{ textAlign: "right" }}>Egresos</span>
-            <span style={{ textAlign: "right" }}>Resultado</span>
+            <span>Mes</span><span style={{ textAlign: "right" }}>Ingresos</span><span style={{ textAlign: "right" }}>Egresos</span><span style={{ textAlign: "right" }}>Resultado</span>
           </div>
           {monthly.map((m, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr 1fr", gap: 8, padding: "6px 0", borderBottom: "1px solid " + C.s2, fontSize: 12, fontFamily: C.mono }}>
@@ -715,17 +640,12 @@ export default function GestionRB() {
             </div>
           ))}
         </div>
-
         {ejecutivo && Object.keys(ejecutivo.porConcepto || {}).length > 0 && (
           <div style={bx()}>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 12 }}>Egresos por Concepto</div>
-            <Bar items={Object.entries(ejecutivo.porConcepto)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 8)
-              .map(([k, v]) => ({ l: k.length > 14 ? k.slice(0, 13) + "." : k, v, c: C.o }))} />
+            <Bar items={Object.entries(ejecutivo.porConcepto).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => ({ l: k.length > 14 ? k.slice(0, 13) + "." : k, v, c: C.o }))} />
           </div>
         )}
-
         <div style={bx()}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.tx, marginBottom: 8 }}>Saldo Acumulado</div>
           <Bar items={monthly.map((m) => ({ l: m.m, v: m.running, c: m.running >= 0 ? C.g : C.r }))} />
@@ -734,9 +654,7 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 7: COSTOS
-     ═══════════════════════════════════ */
+  /* ═══ TAB 7: COSTOS ═══ */
   const renderCosts = () => {
     var catTotals = CATS.map((cat, i) => ({ cat, total: events.reduce((s, e) => s + (e.costs[i] || 0), 0) })).sort((a, b) => b.total - a.total);
     var totalVar = catTotals.reduce((s, c) => s + c.total, 0);
@@ -770,9 +688,7 @@ export default function GestionRB() {
     );
   };
 
-  /* ═══════════════════════════════════
-     TAB 8: ADMIN
-     ═══════════════════════════════════ */
+  /* ═══ TAB 8: ADMIN ═══ */
   const renderAdmin = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: C.tx, fontFamily: C.sans }}>Administración</div>
@@ -788,8 +704,7 @@ export default function GestionRB() {
                 <Btn onClick={() => { setFixed({ ...fixed, [k]: Number(editFxVal) }); setEditFx(null); }} color={C.g}>OK</Btn>
               </div>
             ) : (
-              <span style={{ color: C.y, fontFamily: C.mono, fontSize: 13, cursor: "pointer" }}
-                onClick={() => { setEditFx(k); setEditFxVal(String(v)); }}>{ff(v)}</span>
+              <span style={{ color: C.y, fontFamily: C.mono, fontSize: 13, cursor: "pointer" }} onClick={() => { setEditFx(k); setEditFxVal(String(v)); }}>{ff(v)}</span>
             )}
           </div>
         ))}
@@ -824,13 +739,7 @@ export default function GestionRB() {
           <div>Temporada: Mar - Nov ({MOS.length} meses)</div>
         </div>
         <div style={{ marginTop: 12 }}>
-          <Btn onClick={() => {
-            setLoading(true);
-            fetchTodosLosEventos()
-              .then((evts) => { if (evts?.length) { setEvents(evts); setLoadError(null); } })
-              .catch((e) => setLoadError("Error: " + e.message))
-              .finally(() => setLoading(false));
-          }} color={C.b}>↺ Recargar desde Sheets</Btn>
+          <Btn onClick={() => { setLoading(true); fetchTodosLosEventos().then((evts) => { if (evts?.length) { setEvents(evts); setLoadError(null); } }).catch((e) => setLoadError("Error: " + e.message)).finally(() => setLoading(false)); }} color={C.b}>↺ Recargar desde Sheets</Btn>
         </div>
       </div>
     </div>
