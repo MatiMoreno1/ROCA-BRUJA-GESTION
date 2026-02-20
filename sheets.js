@@ -142,6 +142,7 @@ export async function fetchEjecutivo() {
   let porSubConcepto = {};
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
+    console.log("PAGOS rows:", rows.length, rows[0]);
     rows.forEach(r => {
       const monto = parseNum(r["MONTO"] || "");
       if (monto <= 0) return;
