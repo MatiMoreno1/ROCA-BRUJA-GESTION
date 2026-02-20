@@ -13,8 +13,14 @@ export async function fetchSheet(sheetId, tabName) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
+  if (tabName !== "PAGOS_MAESTRO") {
+    const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
+    return data;
+  }
+  // Buscar header dinamicamente (puede estar en fila 1, 2 o 3)
   const lines = text.split("\n");
-  const csvData = tabName === "PAGOS_MAESTRO" ? lines.slice(1).join("\n") : text;
+  const headerIdx = lines.findIndex(l => l.includes("FECHA") && l.includes("CONCEPTO") && l.includes("MONTO"));
+  const csvData = headerIdx >= 0 ? lines.slice(headerIdx).join("\n") : lines.slice(1).join("\n");
   const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
   return data;
 }
@@ -138,10 +144,10 @@ export async function fetchEjecutivo() {
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
     rows.forEach(r => {
-      const monto = parseNum(r["MONTO"] || "");
+      const monto = parseNum(r["MONTO"] || r["MONTO "] || "");
       if (monto <= 0) return;
-      const concepto = String(r["CONCEPTO"] || "").trim().replace(/\.{2,}$/, "").trim();
-      const subConcepto = String(r["SUB-CONCEPTO"] || "").trim();
+      const concepto = String(r["CONCEPTO"] || r["CONCEPTO "] || "").trim().replace(/\.{2,}$/, "").trim();
+      const subConcepto = String(r["SUB-CONCEPTO"] || r["SUB-CONCEPTO "] || "").trim();
       if (concepto && concepto.length >= 3) {
         porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
       }
