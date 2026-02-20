@@ -14,10 +14,9 @@ export async function fetchSheet(sheetId, tabName) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
   const lines = text.split("\n");
-  const csvData = tabName === "PAGOS_MAESTRO" ? lines.slice(1).join("\n") : text;
-  const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
-  return data;
-}
+ const csvData = tabName === "PAGOS_MAESTRO" 
+  ? lines.filter(l => !l.startsWith('"REGISTRO') && !l.startsWith('REGISTRO')).join("\n")
+  : text;
 /* ── JSON (valores calculados) ── */
 async function fetchSheetJSON(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
