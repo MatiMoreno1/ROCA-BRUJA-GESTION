@@ -14,10 +14,11 @@ export async function fetchSheet(sheetId, tabName) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
   const lines = text.split("\n");
-const csvData = tabName === "PAGOS_MAESTRO" ? lines.slice(1).join("\n") : text;
- const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
- return data; 
-/* ── JSON (valores calculados) ── */
+  const csvData = tabName === "PAGOS_MAESTRO" ? lines.slice(1).join("\n") : text;
+  const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
+  return data;
+}
+
 async function fetchSheetJSON(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -35,9 +36,6 @@ function parseNum(val) {
   return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
 }
 
-/* ══════════════════════════════════════════════════
-   PROYECCIÓN 2026 — lee de "Egresos detalladosV2"
-══════════════════════════════════════════════════ */
 const MESES_PROY = [
   {nombre:"MAR", mesNum:3},  {nombre:"ABR", mesNum:4},
   {nombre:"MAY", mesNum:5},  {nombre:"JUN", mesNum:6},
@@ -51,17 +49,14 @@ export async function fetchProyeccion() {
   const sheetId = SHEET_IDS.proyeccion;
   try {
     const rows = await fetchSheetJSON(sheetId, "Egresos detalladosV2");
-
     const findRow = (keyword) =>
       rows.find(r => String(r[0] || r[1] || "").toUpperCase().includes(keyword.toUpperCase()));
-
     const rowIngresos  = findRow("INGRESO TOTAL") || findRow("INGRESO MENSUAL");
     const rowGasto     = findRow("GASTO MENSUAL");
     const rowResOp     = findRow("RESULTADO OPERATIVO ");
     const rowEstruc    = findRow("SUBTOTAL ESTRUCTURA");
     const rowNoche     = findRow("SUBTOTAL GASTOS POR NOCHE");
     const rowVariables = findRow("SUBTOTAL GASTOS VARIABLES");
-
     const egresosConcepto = {};
     for (const row of rows) {
       const concepto = String(row[0] || "").trim();
@@ -69,7 +64,6 @@ export async function fetchProyeccion() {
       const total = MESES_PROY.reduce((s, _, i) => s + parseNum(row[COL_START + i]), 0);
       if (total > 10000) egresosConcepto[concepto] = total;
     }
-
     const meses = MESES_PROY.map((m, i) => {
       const col = COL_START + i;
       const ingresos  = parseNum(rowIngresos?.[col]);
@@ -84,28 +78,17 @@ export async function fetchProyeccion() {
         variables:   parseNum(rowVariables?.[col]),
       };
     });
-
     const totalIngresos  = meses.reduce((s, m) => s + m.ingresos,  0);
     const totalEgresos   = meses.reduce((s, m) => s + m.egresos,   0);
     const totalResultado = meses.reduce((s, m) => s + m.resultado, 0);
     const margenAnual    = totalIngresos > 0 ? totalResultado / totalIngresos : 0;
-
-    return {
-      meses, totalIngresos, totalEgresos, totalResultado,
-      margenAnual, egresosConcepto, cargado: true,
-    };
+    return { meses, totalIngresos, totalEgresos, totalResultado, margenAnual, egresosConcepto, cargado: true };
   } catch (e) {
     console.error("fetchProyeccion:", e);
-    return {
-      meses: [], totalIngresos: 0, totalEgresos: 0,
-      totalResultado: 0, margenAnual: 0, egresosConcepto: {}, cargado: false,
-    };
+    return { meses: [], totalIngresos: 0, totalEgresos: 0, totalResultado: 0, margenAnual: 0, egresosConcepto: {}, cargado: false };
   }
 }
 
-/* ══════════════════════════════════════════════════
-   GR EJECUTIVO 2026 — cash flow real por mes
-══════════════════════════════════════════════════ */
 const MESES_EJ = [
   {num:1,  nombre:"ENE", tab:"ENERO_MENSUAL"},
   {num:2,  nombre:"FEB", tab:"FEBRERO_MENSUAL"},
@@ -144,77 +127,40 @@ async function fetchTotalesMes(sheetId, tab) {
 
 export async function fetchEjecutivo() {
   const sheetId = SHEET_IDS.ejecutivo;
-
-  // Cash flow por mes (sin cambios)
   const totalesPorMes = await Promise.all(MESES_EJ.map(m => fetchTotalesMes(sheetId, m.tab)));
   const cashflow = MESES_EJ.map((m, i) => {
     const { totalIngresos, totalEgresos } = totalesPorMes[i];
-    return {
-      mes: m.nombre,
-      mesNum: m.num,
-      ingresos: totalIngresos,
-      egresos: totalEgresos,
-      resultado: totalIngresos - totalEgresos,
-    };
+    return { mes: m.nombre, mesNum: m.num, ingresos: totalIngresos, egresos: totalEgresos, resultado: totalIngresos - totalEgresos };
   });
 
-  // ── FIX: leer PAGOS_MAESTRO agrupando por CONCEPTO (col B) ──
-  // Las columnas son: FECHA | CONCEPTO | SUB-CONCEPTO | MONTO | MES | ESTADO | NOTAS
-  // El CONCEPTO viene truncado con "..." desde dropdown, por eso agrupamos por
-  // SUB-CONCEPTO que tiene el valor real, pero mostramos la categoría CONCEPTO limpia.
   let porConcepto = {};
   let porSubConcepto = {};
-
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
-
     rows.forEach(r => {
       const monto = parseNum(r["MONTO"] || "");
       if (monto <= 0) return;
-
-      // Columna CONCEPTO — puede venir truncada, la limpiamos
-      const rawConcepto = String(r["CONCEPTO"] || "").trim();
-      // Quitamos el "..." y normalizamos
-      const concepto = rawConcepto.replace(/\.{2,}$/, "").trim();
-
-      // Columna SUB-CONCEPTO — valor específico, más descriptivo
+      const concepto = String(r["CONCEPTO"] || "").trim().replace(/\.{2,}$/, "").trim();
       const subConcepto = String(r["SUB-CONCEPTO"] || "").trim();
-
       if (concepto && concepto.length >= 3) {
         porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
       }
-
       if (subConcepto && subConcepto.length >= 2) {
         porSubConcepto[subConcepto] = (porSubConcepto[subConcepto] || 0) + monto;
       }
     });
-
-    // Si porConcepto quedó vacío (todos truncados), usar subConcepto como fallback
-    const totalCategorias = Object.keys(porConcepto).length;
-    if (totalCategorias === 0) {
+    if (Object.keys(porConcepto).length === 0) {
       porConcepto = { ...porSubConcepto };
     }
-
   } catch (e) {
-    console.error("fetchEjecutivo → PAGOS_MAESTRO:", e);
+    console.error("fetchEjecutivo -> PAGOS_MAESTRO:", e);
   }
 
   const totalIngresos = cashflow.reduce((s, m) => s + m.ingresos, 0);
   const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos,  0);
-
-  return {
-    cashflow,
-    totalIngresos,
-    totalEgresos,
-    resultado: totalIngresos - totalEgresos,
-    porConcepto,
-    porSubConcepto, // disponible si mensual.jsx lo necesita en el futuro
-  };
+  return { cashflow, totalIngresos, totalEgresos, resultado: totalIngresos - totalEgresos, porConcepto, porSubConcepto };
 }
 
-/* ══════════════════════════════════════════════════
-   ÍNDICE DE EVENTOS
-══════════════════════════════════════════════════ */
 export async function fetchIndice() {
   const rows = await fetchSheet(SHEET_IDS.indice, "INDICE");
   return rows.map(r => ({
@@ -225,9 +171,6 @@ export async function fetchIndice() {
   })).filter(r => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
 
-/* ══════════════════════════════════════════════════
-   EVENTO INDIVIDUAL
-══════════════════════════════════════════════════ */
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
   const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
   await Promise.all(Object.keys(tabs).map(async tab => {
