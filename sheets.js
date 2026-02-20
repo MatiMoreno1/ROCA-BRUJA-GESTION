@@ -8,16 +8,16 @@ export const SHEET_IDS = {
   proyeccion: "1z32e52_B6xHsduDsCZZFzpXAUwnCfM5aJ5UAZnz1Iis",
 };
 
-/* ── CSV ── */
 export async function fetchSheet(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
-  const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
+  const lines = text.split("\n");
+  const csvData = tabName === "PAGOS_MAESTRO" ? lines.slice(1).join("\n") : text;
+  const { data } = Papa.parse(csvData, { header: true, skipEmptyLines: true });
   return data;
 }
-
 /* ── JSON (valores calculados) ── */
 async function fetchSheetJSON(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
