@@ -144,10 +144,10 @@ export async function fetchEjecutivo() {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
     console.log("PAGOS rows:", rows.length, rows[0]);
     rows.forEach(r => {
-      const monto = parseNum(r["MONTO"] || "");
+      const monto = parseNum(r["MONTO "] || "");
       if (monto <= 0) return;
-      const concepto = String(r["CONCEPTO"] || "").trim().replace(/\.{2,}$/, "").trim();
-      const subConcepto = String(r["SUB-CONCEPTO"] || "").trim();
+      const concepto = String(r["CONCEPTO "] || "")
+      const subConcepto = String(r["SUB-CONCEPTO "] || "")
       if (concepto && concepto.length >= 3) {
         porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
       }
