@@ -38,20 +38,6 @@ function parseNum(val) {
 
 /* ══════════════════════════════════════════════════
    PROYECCIÓN 2026 — lee de "Egresos detalladosV2"
-   Estructura (columnas por índice):
-     col 0 = CONCEPTO
-     col 4 = MARZO, 5=ABRIL, 6=MAYO, 7=JUNIO,
-             8=JULIO, 9=AGOSTO, 10=SEPTIEMBRE,
-             11=OCTUBRE, 12=NOVIEMBRE
-   Filas clave (0-indexed):
-     fila 1  = INGRESO MENSUAL FECHAS RB
-     fila 7  = INGRESO TOTAL
-     fila 27 = Subtotal Estructura
-     fila 34 = Subtotal Gastos Por Noche
-     fila 43 = Subtotal Gastos Variables
-     fila 44 = GASTO MENSUAL
-     fila 46 = Resultado Operativo
-     fila 47 = Resultado Operativo %
 ══════════════════════════════════════════════════ */
 const MESES_PROY = [
   {nombre:"MAR", mesNum:3},  {nombre:"ABR", mesNum:4},
@@ -60,35 +46,31 @@ const MESES_PROY = [
   {nombre:"SEP", mesNum:9},  {nombre:"OCT", mesNum:10},
   {nombre:"NOV", mesNum:11},
 ];
-const COL_START = 4; // columna E = índice 4 = MARZO
+const COL_START = 4;
 
 export async function fetchProyeccion() {
   const sheetId = SHEET_IDS.proyeccion;
   try {
     const rows = await fetchSheetJSON(sheetId, "Egresos detalladosV2");
 
-    // Buscar filas clave por concepto
     const findRow = (keyword) =>
       rows.find(r => String(r[0] || r[1] || "").toUpperCase().includes(keyword.toUpperCase()));
 
     const rowIngresos  = findRow("INGRESO TOTAL") || findRow("INGRESO MENSUAL");
     const rowGasto     = findRow("GASTO MENSUAL");
-    const rowResOp     = findRow("RESULTADO OPERATIVO ");  // espacio para evitar el %
+    const rowResOp     = findRow("RESULTADO OPERATIVO ");
     const rowEstruc    = findRow("SUBTOTAL ESTRUCTURA");
     const rowNoche     = findRow("SUBTOTAL GASTOS POR NOCHE");
     const rowVariables = findRow("SUBTOTAL GASTOS VARIABLES");
 
-    // Parsear conceptos de egresos (filas individuales)
     const egresosConcepto = {};
     for (const row of rows) {
       const concepto = String(row[0] || "").trim();
       if (!concepto || concepto.length < 3) continue;
-      // Sumar todos los meses para ese concepto
       const total = MESES_PROY.reduce((s, _, i) => s + parseNum(row[COL_START + i]), 0);
       if (total > 10000) egresosConcepto[concepto] = total;
     }
 
-    // Armar array de meses
     const meses = MESES_PROY.map((m, i) => {
       const col = COL_START + i;
       const ingresos  = parseNum(rowIngresos?.[col]);
@@ -96,13 +78,8 @@ export async function fetchProyeccion() {
       const resultado = rowResOp ? parseNum(rowResOp[col]) : ingresos - egresos;
       const margen    = ingresos > 0 ? resultado / ingresos : 0;
       return {
-        mes: m.nombre,
-        mesNombre: m.nombre,
-        mesNum: m.mesNum,
-        ingresos,
-        egresos,
-        resultado,
-        margen,
+        mes: m.nombre, mesNombre: m.nombre, mesNum: m.mesNum,
+        ingresos, egresos, resultado, margen,
         estructura:  parseNum(rowEstruc?.[col]),
         porNoche:    parseNum(rowNoche?.[col]),
         variables:   parseNum(rowVariables?.[col]),
@@ -131,18 +108,18 @@ export async function fetchProyeccion() {
    GR EJECUTIVO 2026 — cash flow real por mes
 ══════════════════════════════════════════════════ */
 const MESES_EJ = [
-  {num:1,nombre:"ENE",tab:"ENERO_MENSUAL"},
-  {num:2,nombre:"FEB",tab:"FEBRERO_MENSUAL"},
-  {num:3,nombre:"MAR",tab:"MARZO_MENSUAL"},
-  {num:4,nombre:"ABR",tab:"ABRIL_MENSUAL"},
-  {num:5,nombre:"MAY",tab:"MAYO_MENSUAL"},
-  {num:6,nombre:"JUN",tab:"JUNIO_MENSUAL"},
-  {num:7,nombre:"JUL",tab:"JULIO_MENSUAL"},
-  {num:8,nombre:"AGO",tab:"AGOSTO_MENSUAL"},
-  {num:9,nombre:"SEP",tab:"SEPTIEMBRE_MENSUAL"},
-  {num:10,nombre:"OCT",tab:"OCTUBRE_MENSUAL"},
-  {num:11,nombre:"NOV",tab:"NOVIEMBRE_MENSUAL"},
-  {num:12,nombre:"DIC",tab:"DICIEMBRE_MENSUAL"},
+  {num:1,  nombre:"ENE", tab:"ENERO_MENSUAL"},
+  {num:2,  nombre:"FEB", tab:"FEBRERO_MENSUAL"},
+  {num:3,  nombre:"MAR", tab:"MARZO_MENSUAL"},
+  {num:4,  nombre:"ABR", tab:"ABRIL_MENSUAL"},
+  {num:5,  nombre:"MAY", tab:"MAYO_MENSUAL"},
+  {num:6,  nombre:"JUN", tab:"JUNIO_MENSUAL"},
+  {num:7,  nombre:"JUL", tab:"JULIO_MENSUAL"},
+  {num:8,  nombre:"AGO", tab:"AGOSTO_MENSUAL"},
+  {num:9,  nombre:"SEP", tab:"SEPTIEMBRE_MENSUAL"},
+  {num:10, nombre:"OCT", tab:"OCTUBRE_MENSUAL"},
+  {num:11, nombre:"NOV", tab:"NOVIEMBRE_MENSUAL"},
+  {num:12, nombre:"DIC", tab:"DICIEMBRE_MENSUAL"},
 ];
 
 async function fetchTotalesMes(sheetId, tab) {
@@ -168,23 +145,72 @@ async function fetchTotalesMes(sheetId, tab) {
 
 export async function fetchEjecutivo() {
   const sheetId = SHEET_IDS.ejecutivo;
+
+  // Cash flow por mes (sin cambios)
   const totalesPorMes = await Promise.all(MESES_EJ.map(m => fetchTotalesMes(sheetId, m.tab)));
   const cashflow = MESES_EJ.map((m, i) => {
     const { totalIngresos, totalEgresos } = totalesPorMes[i];
-    return { mes: m.nombre, mesNum: m.num, ingresos: totalIngresos, egresos: totalEgresos, resultado: totalIngresos - totalEgresos };
+    return {
+      mes: m.nombre,
+      mesNum: m.num,
+      ingresos: totalIngresos,
+      egresos: totalEgresos,
+      resultado: totalIngresos - totalEgresos,
+    };
   });
+
+  // ── FIX: leer PAGOS_MAESTRO agrupando por CONCEPTO (col B) ──
+  // Las columnas son: FECHA | CONCEPTO | SUB-CONCEPTO | MONTO | MES | ESTADO | NOTAS
+  // El CONCEPTO viene truncado con "..." desde dropdown, por eso agrupamos por
+  // SUB-CONCEPTO que tiene el valor real, pero mostramos la categoría CONCEPTO limpia.
   let porConcepto = {};
+  let porSubConcepto = {};
+
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
+
     rows.forEach(r => {
-      const concepto = r["CONCEPTO"] || "";
       const monto = parseNum(r["MONTO"] || "");
-      if (concepto && monto > 0) porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
+      if (monto <= 0) return;
+
+      // Columna CONCEPTO — puede venir truncada, la limpiamos
+      const rawConcepto = String(r["CONCEPTO"] || "").trim();
+      // Quitamos el "..." y normalizamos
+      const concepto = rawConcepto.replace(/\.{2,}$/, "").trim();
+
+      // Columna SUB-CONCEPTO — valor específico, más descriptivo
+      const subConcepto = String(r["SUB-CONCEPTO"] || "").trim();
+
+      if (concepto && concepto.length >= 3) {
+        porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
+      }
+
+      if (subConcepto && subConcepto.length >= 2) {
+        porSubConcepto[subConcepto] = (porSubConcepto[subConcepto] || 0) + monto;
+      }
     });
-  } catch {}
+
+    // Si porConcepto quedó vacío (todos truncados), usar subConcepto como fallback
+    const totalCategorias = Object.keys(porConcepto).length;
+    if (totalCategorias === 0) {
+      porConcepto = { ...porSubConcepto };
+    }
+
+  } catch (e) {
+    console.error("fetchEjecutivo → PAGOS_MAESTRO:", e);
+  }
+
   const totalIngresos = cashflow.reduce((s, m) => s + m.ingresos, 0);
   const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos,  0);
-  return { cashflow, totalIngresos, totalEgresos, resultado: totalIngresos - totalEgresos, porConcepto };
+
+  return {
+    cashflow,
+    totalIngresos,
+    totalEgresos,
+    resultado: totalIngresos - totalEgresos,
+    porConcepto,
+    porSubConcepto, // disponible si mensual.jsx lo necesita en el futuro
+  };
 }
 
 /* ══════════════════════════════════════════════════
