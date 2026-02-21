@@ -5,6 +5,7 @@ import VendedoresRB from "./vendedores.jsx";
 import BebidasCMV from "./bebidas.jsx";
 import EventoLive from "./evento.jsx";
 import PagosDashboard from "./pagos.jsx";
+import PastosDashboard from "./pastos.jsx";
 
 const C = {
   bg:"#060609", s1:"#0e0e14", s2:"#16161f", s3:"#1e1e2a",
@@ -15,12 +16,13 @@ const C = {
 };
 
 const MODULES = [
-  { id:"evento",    label:"Evento Live",    icon:"◉", color:C.o },
-  { id:"gestion",   label:"Gestión Anual",  icon:"≡", color:C.g },
-  { id:"mensual",   label:"Mensual P&L",    icon:"□", color:C.b },
-  { id:"vendedores",label:"Vendedores",     icon:"▲", color:C.y },
-  { id:"bebidas",   label:"Bebidas/CMV",    icon:"●", color:C.p },
-  { id:"pagos",     label:"Caja",           icon:"💰", color:C.v },
+  { id:"evento",    label:"Evento Live",   icon:"◉", color:C.o },
+  { id:"gestion",   label:"Gestión Anual", icon:"≡", color:C.g },
+  { id:"mensual",   label:"Mensual P&L",   icon:"□", color:C.b },
+  { id:"vendedores",label:"Vendedores",    icon:"▲", color:C.y },
+  { id:"bebidas",   label:"Bebidas/CMV",   icon:"●", color:C.p },
+  { id:"pagos",     label:"Caja",          icon:"💰", color:C.v },
+  { id:"pastos",    label:"Pastos",        icon:"⚽", color:C.g },
 ];
 
 class ErrorBoundary extends Component {
@@ -99,6 +101,7 @@ export default function App() {
           {mod === "vendedores" && <VendedoresRB />}
           {mod === "bebidas"    && <BebidasCMV />}
           {mod === "pagos"      && <PagosDashboard />}
+          {mod === "pastos"     && <PastosDashboard />}
         </ErrorBoundary>
       </div>
     </div>
