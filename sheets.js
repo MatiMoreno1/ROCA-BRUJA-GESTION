@@ -3,9 +3,10 @@ import Papa from "papaparse";
 const BASE = "https://docs.google.com/spreadsheets/d";
 
 export const SHEET_IDS = {
-  indice:     "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8",
-  ejecutivo:  "10FKXj1lIE7dN5UHkP9i0c8eb3G1gkYnes4HjE-GyZ_A", // GR Anual Google Sheets nativo
-  proyeccion: "1z32e52_B6xHsduDsCZZFzpXAUwnCfM5aJ5UAZnz1Iis",
+  indice:       "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8",
+  ejecutivo:    "10FKXj1lIE7dN5UHkP9i0c8eb3G1gkYnes4HjE-GyZ_A",
+  proyeccion:   "1z32e52_B6xHsduDsCZZFzpXAUwnCfM5aJ5UAZnz1Iis",
+  baseClientes: "1HDrFsfNxEtSD_2KZqFJukK8XaLWd7s2VYabwcnfRjmI",
 };
 
 export async function fetchSheet(sheetId, tabName) {
