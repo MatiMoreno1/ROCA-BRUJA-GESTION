@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { fetchSheet, SHEET_IDS } from "./sheets.js";
 
 const C = {
   bg: "#060609", s1: "#0e0e14", s2: "#16161f", s3: "#1e1e2a",
@@ -500,6 +501,66 @@ const VendedoresRB = () => {
   const [vendors, setVendors] = useState(VENDORS_CONFIG);
   const [events, setEvents] = useState(EVENTS);
   const [commissionFilter, setCommissionFilter] = useState("todos");
+  const [baseClientes, setBaseClientes] = useState(BASE_CLIENTES);
+  const [loadingBase, setLoadingBase] = useState(false);
+  const [errorBase, setErrorBase] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
+
+  // Detectar ciclo por nombre del evento
+  const detectarCiclo = (evento) => {
+    const e = String(evento || "").toLowerCase();
+    if (e.includes("viernes") || e.includes("domingo")) return "viernes";
+    if (e.includes("master")) return "master";
+    return "sabado";
+  };
+
+  // Cargar Base Clientes desde Google Sheets
+  const cargarBaseClientes = async () => {
+    setLoadingBase(true);
+    setErrorBase(null);
+    try {
+      const rows = await fetchSheet(SHEET_IDS.baseClientes, "Clientes");
+      if (!rows || rows.length === 0) { setLoadingBase(false); return; }
+      const parsed = rows
+        .filter(r => r.TITULAR && String(r.TITULAR).trim().length > 1)
+        .map(r => ({
+          fecha:   String(r.FECHA   || "").trim(),
+          evento:  String(r.EVENTO  || "").trim(),
+          sector:  String(r.SECTOR  || "").trim().toUpperCase(),
+          titular: String(r.TITULAR || "").trim(),
+          publica: String(r.PUBLICA || "").trim(),
+          importe: parseFloat(String(r.IMPORTE || "0").replace(/[^0-9.-]/g, "")) || 0,
+          ciclo:   detectarCiclo(r.EVENTO),
+        }));
+      setBaseClientes(parsed);
+      // Reconstruir EVENTS desde base clientes agrupando por evento+publica
+      const evMap = {};
+      parsed.forEach(c => {
+        const evKey = c.evento;
+        if (!evMap[evKey]) evMap[evKey] = { id: c.evento, cycle: c.ciclo, date: c.fecha, vendorSales: {} };
+        const v = c.publica;
+        if (!evMap[evKey].vendorSales[v]) evMap[evKey].vendorSales[v] = { vendedor: v, mesas: 0, montoMesas: 0, montoCombos: 0, clientes: 0, cobrado: false };
+        if (c.sector === "COMBOS") {
+          evMap[evKey].vendorSales[v].montoCombos += c.importe;
+        } else {
+          evMap[evKey].vendorSales[v].montoMesas += c.importe;
+          evMap[evKey].vendorSales[v].mesas += 1;
+        }
+        evMap[evKey].vendorSales[v].clientes += 1;
+      });
+      const evList = Object.values(evMap).map(ev => ({
+        ...ev,
+        vendorSales: Object.values(ev.vendorSales)
+      }));
+      if (evList.length > 0) setEvents(evList);
+      setLastSync(new Date().toLocaleTimeString("es-AR"));
+    } catch(e) {
+      setErrorBase("Error al cargar: " + e.message);
+    }
+    setLoadingBase(false);
+  };
+
+  useEffect(() => { cargarBaseClientes(); }, []);
 
   const getAllVendorNames = () => {
     const names = new Set();
@@ -641,8 +702,20 @@ const VendedoresRB = () => {
   return (
     <div style={{ background: C.bg, color: C.tx, fontFamily: C.sans, padding: "20px" }}>
       <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "32px", marginBottom: "8px", letterSpacing: "-0.5px" }}>Roca Bruja</h1>
-        <p style={{ color: C.t2, marginBottom: "24px", fontSize: "14px" }}>Performance Dashboard - Ciclos de Venta</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px", flexWrap: "wrap", gap: 8 }}>
+          <h1 style={{ fontSize: "32px", margin: 0, letterSpacing: "-0.5px" }}>Roca Bruja</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {lastSync && <span style={{ fontSize: 11, color: C.t2, fontFamily: C.mono }}>Sync: {lastSync}</span>}
+            {errorBase && <span style={{ fontSize: 11, color: C.r, fontFamily: C.mono }}>⚠ {errorBase}</span>}
+            <button onClick={cargarBaseClientes} disabled={loadingBase}
+              style={{ padding: "6px 14px", borderRadius: 8, border: "none", fontSize: 12,
+                fontFamily: C.mono, cursor: loadingBase ? "wait" : "pointer",
+                background: loadingBase ? C.s3 : C.g + "22", color: loadingBase ? C.t2 : C.g }}>
+              {loadingBase ? "Cargando..." : "↻ Sync"}
+            </button>
+          </div>
+        </div>
+        <p style={{ color: C.t2, marginBottom: "24px", fontSize: "14px" }}>Performance Dashboard · Data real desde Base Clientes RB</p>
 
         <div style={{ display: "flex", gap: "8px", overflowX: "auto", marginBottom: "24px", paddingBottom: "8px" }}>
           {TABS.map(t => (
