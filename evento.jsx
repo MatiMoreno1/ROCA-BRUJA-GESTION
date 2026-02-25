@@ -27,6 +27,11 @@ async function fetchTab(sheetId, tabName) {
   const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
   return data;
 }
+/* ── Intentar leer una hoja, devuelve [] si no existe ── */
+async function tryFetchTab(sheetId, tabName) {
+  try { return await fetchTab(sheetId, tabName); }
+  catch(e) { return []; }
+}
 function parseNum(v) {
   if (v == null) return 0;
   if (typeof v === "number") return v;
@@ -138,23 +143,17 @@ function parseComisiones(rows) {
 }
 /* ═══════════════════════════════════════════════════════════
    PARSE RESUMEN — con tracking de secciones y Comisiones Posnet
-   Lee las secciones INGRESOS, BOLETERIA, BARRA y detecta
-   "Comisiones Posnet" en cada una (2.5% ingresos, 5% bol/barra)
    ═══════════════════════════════════════════════════════════ */
 function parseResumen(rows) {
   const res = {};
   let seccion = "general";
   let posnetIdx = 0;
-
   rows.forEach(r => {
     const keys = Object.keys(r);
     const rawConcepto = (r[keys[0]] || "").trim();
     const concepto = rawConcepto.toLowerCase();
     const valor = parseNum(r[keys[1]] || r[keys[2]]);
-
     /* ── Detectar sección actual ── */
-    // Headers de sección: filas que dicen "INGRESOS", "BOLETERIA", "BARRA"
-    // sin ser subtotales ni comisiones
     if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision") && !concepto.includes("neto")) {
       seccion = "ingresos";
     }
@@ -167,12 +166,10 @@ function parseResumen(rows) {
     if (concepto.includes("costo") || concepto.includes("egreso")) {
       seccion = "costos";
     }
-
     /* ── Valores estándar ── */
     if (concepto.includes("mesa") && !concepto.includes("comision")) res.mesas = valor;
     else if (concepto.includes("ticket") || concepto.includes("entrada")) res.tickets = valor;
     else if ((concepto.includes("efectivo") || concepto.includes("cash")) && !concepto.includes("comision")) {
-      // Guardar efectivo por sección
       if (seccion === "boleteria") res.efectivoBoleteria = valor;
       else if (seccion === "barra") res.efectivoBarra = valor;
       else res.efectivo = valor;
@@ -186,17 +183,14 @@ function parseResumen(rows) {
     else if ((concepto.includes("ingreso") && concepto.includes("total")) || concepto.includes("total ing")) res.totalIng = valor;
     else if ((concepto.includes("costo") || concepto.includes("gasto")) && !concepto.includes("comision")) res.totalCost = valor;
     else if (concepto.includes("utilidad") || concepto.includes("resultado")) res.utilidad = valor;
-
     /* ── Sub-totales por sección ── */
     if (concepto.includes("sub") && concepto.includes("total")) {
       if (seccion === "ingresos") res.subtotalIngresos = valor;
       else if (seccion === "boleteria") res.subtotalBoleteria = valor;
       else if (seccion === "barra") res.subtotalBarra = valor;
     }
-
     /* ══ COMISIONES POSNET ══ */
     if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
-      // Intento 1: nombre explícito ("comision posnet ingresos", etc.)
       if (concepto.includes("ingreso") || concepto.includes("mesa")) {
         res.comPosnetIngresos = valor;
       } else if (concepto.includes("boleter") || concepto.includes("puerta")) {
@@ -204,12 +198,10 @@ function parseResumen(rows) {
       } else if (concepto.includes("barra")) {
         res.comPosnetBarra = valor;
       } else {
-        // Intento 2: usar sección actual
         if (seccion === "ingresos") res.comPosnetIngresos = valor;
         else if (seccion === "boleteria") res.comPosnetBoleteria = valor;
         else if (seccion === "barra") res.comPosnetBarra = valor;
         else {
-          // Intento 3: por orden de aparición
           posnetIdx++;
           if (posnetIdx === 1) res.comPosnetIngresos = valor;
           else if (posnetIdx === 2) res.comPosnetBoleteria = valor;
@@ -218,10 +210,7 @@ function parseResumen(rows) {
       }
     }
   });
-
-  // Calcular total comisiones posnet
   res.totalComPosnet = (res.comPosnetIngresos || 0) + (res.comPosnetBoleteria || 0) + (res.comPosnetBarra || 0);
-
   return res;
 }
 function parseBoleteria(rows) {
@@ -242,7 +231,7 @@ function parseBoleteria(rows) {
     };
   }).filter(r => r.tipo);
 }
-/* ─── SEED DATA (Sabado 13/12 demo) ─── */
+/* ─── SEED DATA (demo) ─── */
 const SEED = {
   resumen: {
     mesas: 21000000, tickets: 2700000, efectivo: 13900000, mp: 19300000,
@@ -342,6 +331,7 @@ export default function EventoLive() {
   const [isLive, setIsLive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [resumenSource, setResumenSource] = useState("");
   /* ─── MULTI-EVENT STATE ─── */
   const [eventos, setEventos] = useState([]);
   const [selectedEvento, setSelectedEvento] = useState(null);
@@ -364,28 +354,68 @@ export default function EventoLive() {
       setLoadingIndex(false);
     }
   }, [selectedEvento]);
-  /* ─── LOAD EVENT DATA ─── */
+  /* ═══════════════════════════════════════════════════════
+     LOAD EVENT DATA
+     Prioridad para resumen principal:
+       1. HOJA FINAL (tiene Sabado + Master combinado)
+       2. RESUMEN (evento normal sin Master)
+       3. RESUMEN LADO A (si solo existe esta)
+     ═══════════════════════════════════════════════════════ */
   const loadEventData = useCallback(async (sheetId) => {
     if (!sheetId) return;
     setLoading(true);
     try {
-      const tabNames = ["RESUMEN","MESAS","PERSONAL","EXTRAS","COMISIONES","BOLETERIA"];
+      /* ── Cargar tabs estándar ── */
+      const tabNames = ["MESAS","PERSONAL","EXTRAS","COMISIONES","BOLETERIA"];
       const results = {};
       await Promise.all(tabNames.map(async t => {
         try { results[t] = await fetchTab(sheetId, t); }
-        catch(e) { console.warn("Tab " + t + ":", e.message); results[t] = []; }
+        catch(e) { results[t] = []; }
       }));
 
-      /* ── Intentar leer RESUMEN MASTER y RESUMEN LADO A también ── */
-      let resumenMaster = [];
-      let resumenLadoA = [];
-      try { resumenMaster = await fetchTab(sheetId, "RESUMEN MASTER"); } catch {}
-      try { resumenLadoA = await fetchTab(sheetId, "RESUMEN LADO A"); } catch {}
+      /* ── Cargar RESUMEN con prioridad: HOJA FINAL > RESUMEN > RESUMEN LADO A ── */
+      let resumenRows = [];
+      let source = "";
+
+      // 1. Intentar HOJA FINAL primero (consolidado Sabado + Master)
+      const hojaFinal = await tryFetchTab(sheetId, "HOJA FINAL");
+      if (hojaFinal.length > 0) {
+        resumenRows = hojaFinal;
+        source = "HOJA FINAL";
+      }
+
+      // 2. Si no hay HOJA FINAL, intentar RESUMEN
+      if (resumenRows.length === 0) {
+        const resumen = await tryFetchTab(sheetId, "RESUMEN");
+        if (resumen.length > 0) {
+          resumenRows = resumen;
+          source = "RESUMEN";
+        }
+      }
+
+      // 3. Si tampoco hay RESUMEN, intentar RESUMEN LADO A
+      if (resumenRows.length === 0) {
+        const ladoA = await tryFetchTab(sheetId, "RESUMEN LADO A");
+        if (ladoA.length > 0) {
+          resumenRows = ladoA;
+          source = "RESUMEN LADO A";
+        }
+      }
+
+      /* ── Cargar RESUMEN MASTER y RESUMEN LADO A para desglose ── */
+      const resumenMaster = await tryFetchTab(sheetId, "RESUMEN MASTER");
+      const resumenLadoA = source !== "RESUMEN LADO A"
+        ? await tryFetchTab(sheetId, "RESUMEN LADO A")
+        : []; // Ya lo leímos arriba
+
+      console.log("📊 Resumen leído de:", source, "| Filas:", resumenRows.length,
+        "| Master:", resumenMaster.length > 0 ? "SI" : "NO");
 
       const newData = {
-        resumen: results.RESUMEN?.length ? parseResumen(results.RESUMEN) : SEED.resumen,
-        resumenMaster: resumenMaster.length ? parseResumen(resumenMaster) : null,
-        resumenLadoA: resumenLadoA.length ? parseResumen(resumenLadoA) : null,
+        resumen: resumenRows.length > 0 ? parseResumen(resumenRows) : SEED.resumen,
+        resumenMaster: resumenMaster.length > 0 ? parseResumen(resumenMaster) : null,
+        resumenLadoA: (source !== "RESUMEN LADO A" && resumenLadoA.length > 0)
+          ? parseResumen(resumenLadoA) : null,
         mesas: results.MESAS?.length ? parseMesas(results.MESAS) : SEED.mesas,
         personal: results.PERSONAL?.length ? parsePersonal(results.PERSONAL) : SEED.personal,
         extras: results.EXTRAS?.length ? parseExtras(results.EXTRAS) : SEED.extras,
@@ -393,6 +423,7 @@ export default function EventoLive() {
         boleteria: results.BOLETERIA?.length ? parseBoleteria(results.BOLETERIA) : SEED.boleteria
       };
       setData(newData);
+      setResumenSource(source);
       setIsLive(true);
       setLastUpdate(new Date());
     } catch(e) {
@@ -425,26 +456,20 @@ export default function EventoLive() {
   const totalEntradas = data.boleteria.reduce((s,b) => s + b.qty, 0);
   const resumen = data.resumen || {};
   const ingresos = resumen.totalIng || (totalMesas + totalBoleteria);
-
   /* ── Comisiones Posnet ── */
   const comPosnetIngresos = resumen.comPosnetIngresos || 0;
   const comPosnetBoleteria = resumen.comPosnetBoleteria || 0;
   const comPosnetBarra = resumen.comPosnetBarra || 0;
   const totalComPosnet = comPosnetIngresos + comPosnetBoleteria + comPosnetBarra;
-
-  /* ── Costos totales ahora incluyen comisiones posnet ── */
   const totalCostosConPosnet = totalCostos + totalComPosnet;
-
   const utilidad = resumen.utilidad || (ingresos - totalCostosConPosnet);
   const margen = ingresos > 0 ? utilidad / ingresos : 0;
-
   /* ── Resumen Master (si existe) ── */
   const resMaster = data.resumenMaster || null;
   const comPosnetIngresosMaster = resMaster?.comPosnetIngresos || 0;
   const comPosnetBoleteriaMaster = resMaster?.comPosnetBoleteria || 0;
   const comPosnetBarraMaster = resMaster?.comPosnetBarra || 0;
   const totalComPosnetMaster = comPosnetIngresosMaster + comPosnetBoleteriaMaster + comPosnetBarraMaster;
-
   /* ─── STYLES ─── */
   const card = { background: C.s1, borderRadius: 12, border: "1px solid " + C.bd, padding: 20, marginBottom: 12 };
   const grid2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
@@ -472,7 +497,6 @@ export default function EventoLive() {
       <div style={{ height: 4, background: color, borderRadius: 2, width: Math.min(p * 100, 100) + "%", transition: "width 0.5s" }} />
     </div>
   );
-
   /* ══════════════════════════════════════════════════
      COMISIONES POSNET CARD — componente reutilizable
      ══════════════════════════════════════════════════ */
@@ -504,7 +528,6 @@ export default function EventoLive() {
       </div>
     );
   };
-
   /* ══════════════════════════════ */
   /*   EVENT SELECTOR COMPONENT    */
   /* ══════════════════════════════ */
@@ -572,8 +595,13 @@ export default function EventoLive() {
         <KPI label="Utilidad neta" value={fmt(utilidad)} color={utilidad >= 0 ? C.g : C.r} />
         <KPI label="Margen" value={pct(margen)} color={margen > 0.4 ? C.g : margen > 0.2 ? C.y : C.r} />
       </div>
-
-      {/* ── DESGLOSE INGRESOS (SABADO / LADO A) ── */}
+      {/* ── Indicador de fuente de datos ── */}
+      {resumenSource && (
+        <div style={{ fontSize: 10, color: C.t2, fontFamily: C.mono, marginBottom: 8, textAlign: "right" }}>
+          Datos de: {resumenSource} {resMaster ? " + RESUMEN MASTER" : ""}
+        </div>
+      )}
+      {/* ── DESGLOSE INGRESOS ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
           Desglose de ingresos {resMaster ? "(Sabado)" : ""}
@@ -612,7 +640,6 @@ export default function EventoLive() {
           </div>
         </div>
       </div>
-
       {/* ── BOLETERIA con Posnet ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.p }}>
@@ -639,7 +666,6 @@ export default function EventoLive() {
           </div>
         )}
       </div>
-
       {/* ── BARRA con Posnet ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.v }}>
@@ -666,8 +692,7 @@ export default function EventoLive() {
           </div>
         )}
       </div>
-
-      {/* ── COMISIONES POSNET RESUMEN SABADO ── */}
+      {/* ── COMISIONES POSNET RESUMEN ── */}
       <PosnetCard
         titulo={resMaster ? "Comisiones Posnet (Sabado)" : "Comisiones Posnet"}
         posnetIng={comPosnetIngresos}
@@ -675,7 +700,6 @@ export default function EventoLive() {
         posnetBar={comPosnetBarra}
         totalPosnet={totalComPosnet}
       />
-
       {/* ══ RESUMEN MASTER (si existe) ══ */}
       {resMaster && (
         <>
@@ -702,7 +726,6 @@ export default function EventoLive() {
                 <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(resMaster.totalIng || 0)}</div>
               </div>
             </div>
-
             {/* Boleteria Master */}
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.p, marginBottom: 8 }}>Boleteria Master</div>
@@ -721,7 +744,6 @@ export default function EventoLive() {
                 </div>
               </div>
             </div>
-
             {/* Barra Master */}
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.v, marginBottom: 8 }}>Barra Master</div>
@@ -741,7 +763,6 @@ export default function EventoLive() {
               </div>
             </div>
           </div>
-
           {/* Posnet Master */}
           <PosnetCard
             titulo="Comisiones Posnet (Master)"
@@ -750,7 +771,6 @@ export default function EventoLive() {
             posnetBar={comPosnetBarraMaster}
             totalPosnet={totalComPosnetMaster}
           />
-
           {/* TOTAL GENERAL POSNET */}
           <div style={{ ...card, marginTop: 8, background: C.s2, border: "1px solid " + C.o + "55" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -760,7 +780,6 @@ export default function EventoLive() {
           </div>
         </>
       )}
-
       {/* ── DESGLOSE COSTOS ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
@@ -801,7 +820,6 @@ export default function EventoLive() {
           </div>
         </div>
       </div>
-
       {/* ── COBROS ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>
@@ -905,7 +923,6 @@ export default function EventoLive() {
         <KPI label="Com. Posnet" value={fmt(totalComPosnet + totalComPosnetMaster)} color={C.o} sub="Ing 2.5% + Bol/Bar 5%" />
         <KPI label="Total costos" value={fmt(totalCostosConPosnet)} color={C.r} />
       </div>
-
       {/* Posnet detail in costos */}
       {(totalComPosnet > 0 || totalComPosnetMaster > 0) && (
         <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
@@ -954,7 +971,6 @@ export default function EventoLive() {
           </table>
         </div>
       )}
-
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
         <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>
           Personal
