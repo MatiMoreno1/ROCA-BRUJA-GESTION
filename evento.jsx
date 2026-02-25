@@ -601,31 +601,42 @@ export default function EventoLive() {
           Datos de: {resumenSource} {resMaster ? " + RESUMEN MASTER" : ""}
         </div>
       )}
-      {/* ── DESGLOSE INGRESOS ── */}
+      {/* ── INGRESOS PREVIOS (Mesas + Tickets + Posnet 2.5%) ── */}
       <div style={{ ...card, marginTop: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
-          Desglose de ingresos {resMaster ? "(Sabado)" : ""}
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.b }}>
+          Ingresos Previos {resMaster ? "(Sabado)" : ""}
         </div>
         <div style={grid3}>
           <div>
             <div style={label}>Mesas</div>
             <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resumen.mesas || totalMesas)}</div>
-            {comPosnetIngresos > 0 && (
-              <div style={{ fontSize: 11, color: C.o, fontFamily: C.mono, marginTop: 4 }}>
-                Posnet Ingresos Previos 2.5%: -{fmt(comPosnetIngresos)}
-              </div>
-            )}
           </div>
           <div>
             <div style={label}>Tickets / Entradas</div>
             <div style={{ ...val, fontSize: 18, color: C.p }}>{fmt(resumen.tickets || totalBoleteria)}</div>
           </div>
           <div>
+            <div style={label}>Comision Posnet 2.5%</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{comPosnetIngresos > 0 ? "-" : ""}{fmt(comPosnetIngresos)}</div>
+          </div>
+        </div>
+        {resumen.subtotalIngresos > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid " + C.bd }}>
+            <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>SUBTOTAL INGRESOS PREVIOS</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.b, fontFamily: C.mono }}>{fmt(resumen.subtotalIngresos)}</span>
+          </div>
+        )}
+      </div>
+      {/* ── DESGLOSE GENERAL ── */}
+      <div style={{ ...card, marginTop: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
+          Desglose general {resMaster ? "(Sabado)" : ""}
+        </div>
+        <div style={grid3}>
+          <div>
             <div style={label}>Efectivo</div>
             <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(resumen.efectivo || 0)}</div>
           </div>
-        </div>
-        <div style={{ ...grid3, marginTop: 12 }}>
           <div>
             <div style={label}>Mercado Pago</div>
             <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resumen.mp || 0)}</div>
@@ -634,10 +645,17 @@ export default function EventoLive() {
             <div style={label}>Transferencias</div>
             <div style={{ ...val, fontSize: 18, color: C.v }}>{fmt(resumen.transfer || 0)}</div>
           </div>
+        </div>
+        <div style={{ ...grid3, marginTop: 12 }}>
           <div>
             <div style={label}>Asistencia total</div>
             <div style={{ ...val, fontSize: 18, color: C.w }}>{totalEntradas}</div>
           </div>
+          <div>
+            <div style={label}>Ingreso total</div>
+            <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(ingresos)}</div>
+          </div>
+          <div></div>
         </div>
       </div>
       {/* ── BOLETERIA con Posnet ── */}
