@@ -485,7 +485,7 @@ export default function EventoLive() {
         </div>
         <div style={grid3}>
           <div>
-            <div style={label}>Ingresos (2.5%)</div>
+            <div style={label}>Ingresos Previos (2.5%)</div>
             <div style={{ ...val, fontSize: 18, color: C.o }}>{fmt(posnetIng)}</div>
           </div>
           <div>
@@ -584,7 +584,7 @@ export default function EventoLive() {
             <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resumen.mesas || totalMesas)}</div>
             {comPosnetIngresos > 0 && (
               <div style={{ fontSize: 11, color: C.o, fontFamily: C.mono, marginTop: 4 }}>
-                Posnet 2.5%: -{fmt(comPosnetIngresos)}
+                Posnet Ingresos Previos 2.5%: -{fmt(comPosnetIngresos)}
               </div>
             )}
           </div>
@@ -922,7 +922,7 @@ export default function EventoLive() {
             </thead>
             <tbody>
               <tr style={{ background: C.s2 + "44" }}>
-                <td style={{ ...tdStyle, color: C.w }}>Ingresos (Mesas)</td>
+                <td style={{ ...tdStyle, color: C.w }}>Ingresos Previos (Mesas + Tickets)</td>
                 <td style={{ ...tdStyle, color: C.t2 }}>2.5%</td>
                 <td style={{ ...tdStyle, color: C.o }}>{fmt(comPosnetIngresos)}</td>
                 <td style={{ ...tdStyle, color: C.v }}>{fmt(comPosnetIngresosMaster)}</td>
