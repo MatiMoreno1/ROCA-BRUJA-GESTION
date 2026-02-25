@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import Papa from "papaparse";
-
 /* ─── THEME (shared) ─── */
 const C = {
   bg:"#060609", s1:"#0e0e14", s2:"#16161f", s3:"#1e1e2a",
@@ -9,7 +8,6 @@ const C = {
   b:"#60A5FA", o:"#FB923C", v:"#A78BFA", w:"#ffffff",
   mono:"'DM Mono',monospace", sans:"'DM Sans',sans-serif"
 };
-
 const fmt = n => {
   if (n == null || isNaN(n)) return "$0";
   if (Math.abs(n) >= 1e6) return "$" + (n/1e6).toFixed(1) + "M";
@@ -17,12 +15,10 @@ const fmt = n => {
   return "$" + n.toLocaleString("es-AR");
 };
 const pct = n => (n == null || isNaN(n)) ? "0%" : (n*100).toFixed(1) + "%";
-
 /* ─── GOOGLE SHEETS ─── */
 const INDEX_ID = import.meta.env.VITE_SHEET_INDEX || "";
 const BASE = "https://docs.google.com/spreadsheets/d";
 const REFRESH_MS = 60000;
-
 async function fetchTab(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -31,7 +27,6 @@ async function fetchTab(sheetId, tabName) {
   const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
   return data;
 }
-
 function parseNum(v) {
   if (v == null) return 0;
   if (typeof v === "number") return v;
@@ -47,7 +42,6 @@ function parseNum(v) {
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
-
 /* ─── INDEX PARSER ─── */
 function parseIndex(rows) {
   return rows.map(r => {
@@ -67,7 +61,6 @@ function parseIndex(rows) {
     };
   }).filter(e => e.sheetId);
 }
-
 /* ─── DATA PARSERS ─── */
 function parseMesas(rows) {
   return rows.map(r => {
@@ -91,7 +84,6 @@ function parseMesas(rows) {
     };
   }).filter(m => m.mesa);
 }
-
 function parsePersonal(rows) {
   return rows.map(r => {
     const keys = Object.keys(r);
@@ -110,7 +102,6 @@ function parsePersonal(rows) {
     };
   }).filter(r => r.rol);
 }
-
 function parseExtras(rows) {
   return rows.map(r => {
     const keys = Object.keys(r);
@@ -127,7 +118,6 @@ function parseExtras(rows) {
     };
   }).filter(r => r.concepto);
 }
-
 function parseComisiones(rows) {
   return rows.map(r => {
     const keys = Object.keys(r);
@@ -146,25 +136,94 @@ function parseComisiones(rows) {
     };
   }).filter(r => r.vendedor);
 }
-
+/* ═══════════════════════════════════════════════════════════
+   PARSE RESUMEN — con tracking de secciones y Comisiones Posnet
+   Lee las secciones INGRESOS, BOLETERIA, BARRA y detecta
+   "Comisiones Posnet" en cada una (2.5% ingresos, 5% bol/barra)
+   ═══════════════════════════════════════════════════════════ */
 function parseResumen(rows) {
   const res = {};
+  let seccion = "general";
+  let posnetIdx = 0;
+
   rows.forEach(r => {
     const keys = Object.keys(r);
-    const concepto = (r[keys[0]] || "").trim().toLowerCase();
+    const rawConcepto = (r[keys[0]] || "").trim();
+    const concepto = rawConcepto.toLowerCase();
     const valor = parseNum(r[keys[1]] || r[keys[2]]);
-    if (concepto.includes("mesa")) res.mesas = valor;
+
+    /* ── Detectar sección actual ── */
+    // Headers de sección: filas que dicen "INGRESOS", "BOLETERIA", "BARRA"
+    // sin ser subtotales ni comisiones
+    if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision") && !concepto.includes("neto")) {
+      seccion = "ingresos";
+    }
+    if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub") && !concepto.includes("total")) {
+      seccion = "boleteria";
+    }
+    if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub") && !concepto.includes("total")) {
+      seccion = "barra";
+    }
+    if (concepto.includes("costo") || concepto.includes("egreso")) {
+      seccion = "costos";
+    }
+
+    /* ── Valores estándar ── */
+    if (concepto.includes("mesa") && !concepto.includes("comision")) res.mesas = valor;
     else if (concepto.includes("ticket") || concepto.includes("entrada")) res.tickets = valor;
-    else if (concepto.includes("efectivo") || concepto.includes("cash")) res.efectivo = valor;
-    else if (concepto.includes("mp") || concepto.includes("mercado")) res.mp = valor;
+    else if ((concepto.includes("efectivo") || concepto.includes("cash")) && !concepto.includes("comision")) {
+      // Guardar efectivo por sección
+      if (seccion === "boleteria") res.efectivoBoleteria = valor;
+      else if (seccion === "barra") res.efectivoBarra = valor;
+      else res.efectivo = valor;
+    }
+    else if ((concepto.includes("mp") || concepto.includes("mercado") || concepto.includes("posnet")) && !concepto.includes("comision")) {
+      if (seccion === "boleteria") res.mpBoleteria = valor;
+      else if (seccion === "barra") res.mpBarra = valor;
+      else res.mp = valor;
+    }
     else if (concepto.includes("transfer")) res.transfer = valor;
-    else if (concepto.includes("ingreso") || concepto.includes("total ing")) res.totalIng = valor;
-    else if (concepto.includes("costo") || concepto.includes("gasto")) res.totalCost = valor;
+    else if ((concepto.includes("ingreso") && concepto.includes("total")) || concepto.includes("total ing")) res.totalIng = valor;
+    else if ((concepto.includes("costo") || concepto.includes("gasto")) && !concepto.includes("comision")) res.totalCost = valor;
     else if (concepto.includes("utilidad") || concepto.includes("resultado")) res.utilidad = valor;
+
+    /* ── Sub-totales por sección ── */
+    if (concepto.includes("sub") && concepto.includes("total")) {
+      if (seccion === "ingresos") res.subtotalIngresos = valor;
+      else if (seccion === "boleteria") res.subtotalBoleteria = valor;
+      else if (seccion === "barra") res.subtotalBarra = valor;
+    }
+
+    /* ══ COMISIONES POSNET ══ */
+    if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
+      // Intento 1: nombre explícito ("comision posnet ingresos", etc.)
+      if (concepto.includes("ingreso") || concepto.includes("mesa")) {
+        res.comPosnetIngresos = valor;
+      } else if (concepto.includes("boleter") || concepto.includes("puerta")) {
+        res.comPosnetBoleteria = valor;
+      } else if (concepto.includes("barra")) {
+        res.comPosnetBarra = valor;
+      } else {
+        // Intento 2: usar sección actual
+        if (seccion === "ingresos") res.comPosnetIngresos = valor;
+        else if (seccion === "boleteria") res.comPosnetBoleteria = valor;
+        else if (seccion === "barra") res.comPosnetBarra = valor;
+        else {
+          // Intento 3: por orden de aparición
+          posnetIdx++;
+          if (posnetIdx === 1) res.comPosnetIngresos = valor;
+          else if (posnetIdx === 2) res.comPosnetBoleteria = valor;
+          else if (posnetIdx === 3) res.comPosnetBarra = valor;
+        }
+      }
+    }
   });
+
+  // Calcular total comisiones posnet
+  res.totalComPosnet = (res.comPosnetIngresos || 0) + (res.comPosnetBoleteria || 0) + (res.comPosnetBarra || 0);
+
   return res;
 }
-
 function parseBoleteria(rows) {
   return rows.map(r => {
     const keys = Object.keys(r);
@@ -183,12 +242,15 @@ function parseBoleteria(rows) {
     };
   }).filter(r => r.tipo);
 }
-
 /* ─── SEED DATA (Sabado 13/12 demo) ─── */
 const SEED = {
   resumen: {
     mesas: 21000000, tickets: 2700000, efectivo: 13900000, mp: 19300000,
-    transfer: 0, totalIng: 55200000, totalCost: 22400000, utilidad: 32800000
+    transfer: 0, totalIng: 55200000, totalCost: 22400000, utilidad: 32800000,
+    comPosnetIngresos: 525000, comPosnetBoleteria: 135000, comPosnetBarra: 965000,
+    totalComPosnet: 1625000,
+    subtotalIngresos: 0, subtotalBoleteria: 0, subtotalBarra: 0,
+    efectivoBoleteria: 0, mpBoleteria: 0, efectivoBarra: 0, mpBarra: 0
   },
   mesas: [
     { mesa:"A", sector:"VIP1", titular:"Fede L.", publica:"Toto M", importe:1800000, abonado:1800000, pendiente:0, consumo:450000 },
@@ -263,7 +325,6 @@ const SEED = {
     { tipo:"Free / Lista", qty:85, precio:0, total:0 }
   ]
 };
-
 /* ─── TABS CONFIG ─── */
 const TABS = [
   { id:"resumen", label:"Resumen", color:C.o },
@@ -272,7 +333,6 @@ const TABS = [
   { id:"comisiones", label:"Comisiones", color:C.y },
   { id:"boleteria", label:"Boleteria", color:C.p }
 ];
-
 /* ══════════════════════════════════════════════════════ */
 /*  MAIN COMPONENT                                       */
 /* ══════════════════════════════════════════════════════ */
@@ -282,12 +342,10 @@ export default function EventoLive() {
   const [isLive, setIsLive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
-
   /* ─── MULTI-EVENT STATE ─── */
   const [eventos, setEventos] = useState([]);
   const [selectedEvento, setSelectedEvento] = useState(null);
   const [loadingIndex, setLoadingIndex] = useState(false);
-
   /* ─── LOAD INDEX ─── */
   const loadIndex = useCallback(async () => {
     if (!INDEX_ID) return;
@@ -296,7 +354,6 @@ export default function EventoLive() {
       const rows = await fetchTab(INDEX_ID, "INDICE");
       const parsed = parseIndex(rows);
       setEventos(parsed);
-      /* Auto-select EN VIVO event, or most recent */
       if (parsed.length > 0 && !selectedEvento) {
         const live = parsed.find(e => e.estado === "EN VIVO" || e.estado === "ABIERTO" || e.estado === "LIVE");
         setSelectedEvento(live || parsed[parsed.length - 1]);
@@ -307,7 +364,6 @@ export default function EventoLive() {
       setLoadingIndex(false);
     }
   }, [selectedEvento]);
-
   /* ─── LOAD EVENT DATA ─── */
   const loadEventData = useCallback(async (sheetId) => {
     if (!sheetId) return;
@@ -319,8 +375,17 @@ export default function EventoLive() {
         try { results[t] = await fetchTab(sheetId, t); }
         catch(e) { console.warn("Tab " + t + ":", e.message); results[t] = []; }
       }));
+
+      /* ── Intentar leer RESUMEN MASTER y RESUMEN LADO A también ── */
+      let resumenMaster = [];
+      let resumenLadoA = [];
+      try { resumenMaster = await fetchTab(sheetId, "RESUMEN MASTER"); } catch {}
+      try { resumenLadoA = await fetchTab(sheetId, "RESUMEN LADO A"); } catch {}
+
       const newData = {
         resumen: results.RESUMEN?.length ? parseResumen(results.RESUMEN) : SEED.resumen,
+        resumenMaster: resumenMaster.length ? parseResumen(resumenMaster) : null,
+        resumenLadoA: resumenLadoA.length ? parseResumen(resumenLadoA) : null,
         mesas: results.MESAS?.length ? parseMesas(results.MESAS) : SEED.mesas,
         personal: results.PERSONAL?.length ? parsePersonal(results.PERSONAL) : SEED.personal,
         extras: results.EXTRAS?.length ? parseExtras(results.EXTRAS) : SEED.extras,
@@ -336,12 +401,10 @@ export default function EventoLive() {
       setLoading(false);
     }
   }, []);
-
   /* ─── EFFECTS ─── */
   useEffect(() => {
     if (INDEX_ID) loadIndex();
   }, []);
-
   useEffect(() => {
     if (selectedEvento?.sheetId) {
       loadEventData(selectedEvento.sheetId);
@@ -349,7 +412,6 @@ export default function EventoLive() {
       return () => clearInterval(iv);
     }
   }, [selectedEvento, loadEventData]);
-
   /* ─── DERIVED CALCS ─── */
   const totalPersonal = data.personal.reduce((s,r) => s + (r.total || r.qty * r.unit), 0);
   const totalExtras = data.extras.reduce((s,r) => s + r.monto, 0);
@@ -361,11 +423,27 @@ export default function EventoLive() {
   const totalConsumo = data.mesas.reduce((s,m) => s + m.consumo, 0);
   const totalBoleteria = data.boleteria.reduce((s,b) => s + b.total, 0);
   const totalEntradas = data.boleteria.reduce((s,b) => s + b.qty, 0);
-
   const resumen = data.resumen || {};
   const ingresos = resumen.totalIng || (totalMesas + totalBoleteria);
-  const utilidad = resumen.utilidad || (ingresos - totalCostos);
+
+  /* ── Comisiones Posnet ── */
+  const comPosnetIngresos = resumen.comPosnetIngresos || 0;
+  const comPosnetBoleteria = resumen.comPosnetBoleteria || 0;
+  const comPosnetBarra = resumen.comPosnetBarra || 0;
+  const totalComPosnet = comPosnetIngresos + comPosnetBoleteria + comPosnetBarra;
+
+  /* ── Costos totales ahora incluyen comisiones posnet ── */
+  const totalCostosConPosnet = totalCostos + totalComPosnet;
+
+  const utilidad = resumen.utilidad || (ingresos - totalCostosConPosnet);
   const margen = ingresos > 0 ? utilidad / ingresos : 0;
+
+  /* ── Resumen Master (si existe) ── */
+  const resMaster = data.resumenMaster || null;
+  const comPosnetIngresosMaster = resMaster?.comPosnetIngresos || 0;
+  const comPosnetBoleteriaMaster = resMaster?.comPosnetBoleteria || 0;
+  const comPosnetBarraMaster = resMaster?.comPosnetBarra || 0;
+  const totalComPosnetMaster = comPosnetIngresosMaster + comPosnetBoleteriaMaster + comPosnetBarraMaster;
 
   /* ─── STYLES ─── */
   const card = { background: C.s1, borderRadius: 12, border: "1px solid " + C.bd, padding: 20, marginBottom: 12 };
@@ -382,7 +460,6 @@ export default function EventoLive() {
     padding: "8px 12px", fontSize: 13, fontFamily: C.mono,
     borderBottom: "1px solid " + C.bd + "44"
   };
-
   const KPI = ({ label: lb, value, color = C.w, sub }) => (
     <div style={card}>
       <div style={label}>{lb}</div>
@@ -390,12 +467,43 @@ export default function EventoLive() {
       {sub && <div style={{ fontSize: 11, color: C.t2, fontFamily: C.mono, marginTop: 4 }}>{sub}</div>}
     </div>
   );
-
   const Bar = ({ pct: p, color = C.g }) => (
     <div style={{ height: 4, background: C.s3, borderRadius: 2, marginTop: 6 }}>
       <div style={{ height: 4, background: color, borderRadius: 2, width: Math.min(p * 100, 100) + "%", transition: "width 0.5s" }} />
     </div>
   );
+
+  /* ══════════════════════════════════════════════════
+     COMISIONES POSNET CARD — componente reutilizable
+     ══════════════════════════════════════════════════ */
+  const PosnetCard = ({ titulo, posnetIng, posnetBol, posnetBar, totalPosnet }) => {
+    if (!posnetIng && !posnetBol && !posnetBar) return null;
+    return (
+      <div style={{ ...card, marginTop: 8, border: "1px solid " + C.o + "33" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.o }}>
+          {titulo || "Comisiones Posnet"}
+        </div>
+        <div style={grid3}>
+          <div>
+            <div style={label}>Ingresos (2.5%)</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{fmt(posnetIng)}</div>
+          </div>
+          <div>
+            <div style={label}>Boleteria (5%)</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{fmt(posnetBol)}</div>
+          </div>
+          <div>
+            <div style={label}>Barra (5%)</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{fmt(posnetBar)}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid " + C.bd }}>
+          <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>TOTAL COMISIONES POSNET</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: C.o, fontFamily: C.mono }}>{fmt(totalPosnet)}</span>
+        </div>
+      </div>
+    );
+  };
 
   /* ══════════════════════════════ */
   /*   EVENT SELECTOR COMPONENT    */
@@ -452,7 +560,6 @@ export default function EventoLive() {
       </div>
     );
   };
-
   /* ══════════════════════════════ */
   /*       TAB: RESUMEN            */
   /* ══════════════════════════════ */
@@ -460,19 +567,26 @@ export default function EventoLive() {
     <div>
       <div style={grid4}>
         <KPI label="Ingresos totales" value={fmt(ingresos)} color={C.g} />
-        <KPI label="Costos totales" value={fmt(totalCostos)} color={C.r} />
+        <KPI label="Costos totales" value={fmt(totalCostosConPosnet)} color={C.r}
+          sub={totalComPosnet > 0 ? "incl. " + fmt(totalComPosnet) + " posnet" : ""} />
         <KPI label="Utilidad neta" value={fmt(utilidad)} color={utilidad >= 0 ? C.g : C.r} />
         <KPI label="Margen" value={pct(margen)} color={margen > 0.4 ? C.g : margen > 0.2 ? C.y : C.r} />
       </div>
 
+      {/* ── DESGLOSE INGRESOS (SABADO / LADO A) ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
-          Desglose de ingresos
+          Desglose de ingresos {resMaster ? "(Sabado)" : ""}
         </div>
         <div style={grid3}>
           <div>
             <div style={label}>Mesas</div>
             <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resumen.mesas || totalMesas)}</div>
+            {comPosnetIngresos > 0 && (
+              <div style={{ fontSize: 11, color: C.o, fontFamily: C.mono, marginTop: 4 }}>
+                Posnet 2.5%: -{fmt(comPosnetIngresos)}
+              </div>
+            )}
           </div>
           <div>
             <div style={label}>Tickets / Entradas</div>
@@ -499,38 +613,196 @@ export default function EventoLive() {
         </div>
       </div>
 
+      {/* ── BOLETERIA con Posnet ── */}
+      <div style={{ ...card, marginTop: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.p }}>
+          Boleteria {resMaster ? "(Sabado)" : ""}
+        </div>
+        <div style={grid3}>
+          <div>
+            <div style={label}>Efectivo</div>
+            <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(resumen.efectivoBoleteria || 0)}</div>
+          </div>
+          <div>
+            <div style={label}>MP / Posnet</div>
+            <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resumen.mpBoleteria || 0)}</div>
+          </div>
+          <div>
+            <div style={label}>Comision Posnet 5%</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{comPosnetBoleteria > 0 ? "-" : ""}{fmt(comPosnetBoleteria)}</div>
+          </div>
+        </div>
+        {resumen.subtotalBoleteria > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid " + C.bd }}>
+            <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>SUBTOTAL BOLETERIA</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.p, fontFamily: C.mono }}>{fmt(resumen.subtotalBoleteria)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── BARRA con Posnet ── */}
+      <div style={{ ...card, marginTop: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.v }}>
+          Barra MP {resMaster ? "(Sabado)" : ""}
+        </div>
+        <div style={grid3}>
+          <div>
+            <div style={label}>Efectivo</div>
+            <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(resumen.efectivoBarra || 0)}</div>
+          </div>
+          <div>
+            <div style={label}>MP / Posnet</div>
+            <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resumen.mpBarra || 0)}</div>
+          </div>
+          <div>
+            <div style={label}>Comision Posnet 5%</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{comPosnetBarra > 0 ? "-" : ""}{fmt(comPosnetBarra)}</div>
+          </div>
+        </div>
+        {resumen.subtotalBarra > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid " + C.bd }}>
+            <span style={{ fontSize: 12, color: C.t2, fontFamily: C.mono }}>SUBTOTAL BARRA</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.v, fontFamily: C.mono }}>{fmt(resumen.subtotalBarra)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── COMISIONES POSNET RESUMEN SABADO ── */}
+      <PosnetCard
+        titulo={resMaster ? "Comisiones Posnet (Sabado)" : "Comisiones Posnet"}
+        posnetIng={comPosnetIngresos}
+        posnetBol={comPosnetBoleteria}
+        posnetBar={comPosnetBarra}
+        totalPosnet={totalComPosnet}
+      />
+
+      {/* ══ RESUMEN MASTER (si existe) ══ */}
+      {resMaster && (
+        <>
+          <div style={{ ...card, marginTop: 16, border: "1px solid " + C.v + "44" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: C.v }}>
+              MASTER
+            </div>
+            <div style={grid3}>
+              <div>
+                <div style={label}>Mesas Master</div>
+                <div style={{ ...val, fontSize: 18, color: C.b }}>{fmt(resMaster.mesas || 0)}</div>
+                {comPosnetIngresosMaster > 0 && (
+                  <div style={{ fontSize: 11, color: C.o, fontFamily: C.mono, marginTop: 4 }}>
+                    Posnet 2.5%: -{fmt(comPosnetIngresosMaster)}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div style={label}>Tickets Master</div>
+                <div style={{ ...val, fontSize: 18, color: C.p }}>{fmt(resMaster.tickets || 0)}</div>
+              </div>
+              <div>
+                <div style={label}>Ingreso Total Master</div>
+                <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(resMaster.totalIng || 0)}</div>
+              </div>
+            </div>
+
+            {/* Boleteria Master */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.p, marginBottom: 8 }}>Boleteria Master</div>
+              <div style={grid3}>
+                <div>
+                  <div style={label}>Efectivo</div>
+                  <div style={{ ...val, fontSize: 16, color: C.g }}>{fmt(resMaster.efectivoBoleteria || 0)}</div>
+                </div>
+                <div>
+                  <div style={label}>MP / Posnet</div>
+                  <div style={{ ...val, fontSize: 16, color: C.b }}>{fmt(resMaster.mpBoleteria || 0)}</div>
+                </div>
+                <div>
+                  <div style={label}>Comision Posnet 5%</div>
+                  <div style={{ ...val, fontSize: 16, color: C.o }}>{comPosnetBoleteriaMaster > 0 ? "-" : ""}{fmt(comPosnetBoleteriaMaster)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Barra Master */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.v, marginBottom: 8 }}>Barra Master</div>
+              <div style={grid3}>
+                <div>
+                  <div style={label}>Efectivo</div>
+                  <div style={{ ...val, fontSize: 16, color: C.g }}>{fmt(resMaster.efectivoBarra || 0)}</div>
+                </div>
+                <div>
+                  <div style={label}>MP / Posnet</div>
+                  <div style={{ ...val, fontSize: 16, color: C.b }}>{fmt(resMaster.mpBarra || 0)}</div>
+                </div>
+                <div>
+                  <div style={label}>Comision Posnet 5%</div>
+                  <div style={{ ...val, fontSize: 16, color: C.o }}>{comPosnetBarraMaster > 0 ? "-" : ""}{fmt(comPosnetBarraMaster)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Posnet Master */}
+          <PosnetCard
+            titulo="Comisiones Posnet (Master)"
+            posnetIng={comPosnetIngresosMaster}
+            posnetBol={comPosnetBoleteriaMaster}
+            posnetBar={comPosnetBarraMaster}
+            totalPosnet={totalComPosnetMaster}
+          />
+
+          {/* TOTAL GENERAL POSNET */}
+          <div style={{ ...card, marginTop: 8, background: C.s2, border: "1px solid " + C.o + "55" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.o, fontFamily: C.mono }}>TOTAL POSNET SAB + MASTER</span>
+              <span style={{ fontSize: 22, fontWeight: 700, color: C.o, fontFamily: C.mono }}>{fmt(totalComPosnet + totalComPosnetMaster)}</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── DESGLOSE COSTOS ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
           Desglose de costos
         </div>
-        <div style={grid3}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
           <div>
             <div style={label}>Personal</div>
             <div style={{ ...val, fontSize: 18, color: C.r }}>{fmt(totalPersonal)}</div>
-            <Bar pct={totalCostos > 0 ? totalPersonal / totalCostos : 0} color={C.r} />
+            <Bar pct={totalCostosConPosnet > 0 ? totalPersonal / totalCostosConPosnet : 0} color={C.r} />
             <div style={{ fontSize: 10, color: C.t2, marginTop: 4, fontFamily: C.mono }}>
-              {totalCostos > 0 ? pct(totalPersonal / totalCostos) : "0%"} del total
+              {totalCostosConPosnet > 0 ? pct(totalPersonal / totalCostosConPosnet) : "0%"} del total
             </div>
           </div>
           <div>
             <div style={label}>Gastos extra</div>
             <div style={{ ...val, fontSize: 18, color: C.o }}>{fmt(totalExtras)}</div>
-            <Bar pct={totalCostos > 0 ? totalExtras / totalCostos : 0} color={C.o} />
+            <Bar pct={totalCostosConPosnet > 0 ? totalExtras / totalCostosConPosnet : 0} color={C.o} />
             <div style={{ fontSize: 10, color: C.t2, marginTop: 4, fontFamily: C.mono }}>
-              {totalCostos > 0 ? pct(totalExtras / totalCostos) : "0%"} del total
+              {totalCostosConPosnet > 0 ? pct(totalExtras / totalCostosConPosnet) : "0%"} del total
             </div>
           </div>
           <div>
             <div style={label}>Comisiones RRPP</div>
             <div style={{ ...val, fontSize: 18, color: C.y }}>{fmt(totalComisiones)}</div>
-            <Bar pct={totalCostos > 0 ? totalComisiones / totalCostos : 0} color={C.y} />
+            <Bar pct={totalCostosConPosnet > 0 ? totalComisiones / totalCostosConPosnet : 0} color={C.y} />
             <div style={{ fontSize: 10, color: C.t2, marginTop: 4, fontFamily: C.mono }}>
-              {totalCostos > 0 ? pct(totalComisiones / totalCostos) : "0%"} del total
+              {totalCostosConPosnet > 0 ? pct(totalComisiones / totalCostosConPosnet) : "0%"} del total
+            </div>
+          </div>
+          <div>
+            <div style={label}>Comisiones Posnet</div>
+            <div style={{ ...val, fontSize: 18, color: C.o }}>{fmt(totalComPosnet + totalComPosnetMaster)}</div>
+            <Bar pct={totalCostosConPosnet > 0 ? totalComPosnet / totalCostosConPosnet : 0} color={C.o} />
+            <div style={{ fontSize: 10, color: C.t2, marginTop: 4, fontFamily: C.mono }}>
+              {totalCostosConPosnet > 0 ? pct(totalComPosnet / totalCostosConPosnet) : "0%"} del total
             </div>
           </div>
         </div>
       </div>
 
+      {/* ── COBROS ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>
           Cobros - Senas y tickets
@@ -556,7 +828,6 @@ export default function EventoLive() {
       </div>
     </div>
   );
-
   /* ══════════════════════════════ */
   /*       TAB: MESAS              */
   /* ══════════════════════════════ */
@@ -570,7 +841,6 @@ export default function EventoLive() {
           <KPI label="Cobrado" value={fmt(totalAbonado)} color={C.g} sub={totalMesas > 0 ? pct(totalAbonado / totalMesas) : ""} />
           <KPI label="Pendiente" value={fmt(totalPendiente)} color={totalPendiente > 0 ? C.r : C.g} />
         </div>
-
         <div style={{ ...card, marginTop: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>Por sector</div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -587,7 +857,6 @@ export default function EventoLive() {
             })}
           </div>
         </div>
-
         <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -625,17 +894,66 @@ export default function EventoLive() {
       </div>
     );
   };
-
   /* ══════════════════════════════ */
   /*       TAB: COSTOS             */
   /* ══════════════════════════════ */
   const TabCostos = () => (
     <div>
-      <div style={grid3}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
         <KPI label="Personal" value={fmt(totalPersonal)} color={C.r} sub={data.personal.length + " puestos"} />
         <KPI label="Gastos extra" value={fmt(totalExtras)} color={C.o} sub={data.extras.length + " items"} />
-        <KPI label="Total costos" value={fmt(totalPersonal + totalExtras)} color={C.r} />
+        <KPI label="Com. Posnet" value={fmt(totalComPosnet + totalComPosnetMaster)} color={C.o} sub="Ing 2.5% + Bol/Bar 5%" />
+        <KPI label="Total costos" value={fmt(totalCostosConPosnet)} color={C.r} />
       </div>
+
+      {/* Posnet detail in costos */}
+      {(totalComPosnet > 0 || totalComPosnetMaster > 0) && (
+        <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
+          <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.o, borderBottom: "1px solid " + C.bd }}>
+            Comisiones Posnet
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["Seccion","Tasa","Sabado","Master","Total"].map(h => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ background: C.s2 + "44" }}>
+                <td style={{ ...tdStyle, color: C.w }}>Ingresos (Mesas)</td>
+                <td style={{ ...tdStyle, color: C.t2 }}>2.5%</td>
+                <td style={{ ...tdStyle, color: C.o }}>{fmt(comPosnetIngresos)}</td>
+                <td style={{ ...tdStyle, color: C.v }}>{fmt(comPosnetIngresosMaster)}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: C.o }}>{fmt(comPosnetIngresos + comPosnetIngresosMaster)}</td>
+              </tr>
+              <tr>
+                <td style={{ ...tdStyle, color: C.w }}>Boleteria</td>
+                <td style={{ ...tdStyle, color: C.t2 }}>5%</td>
+                <td style={{ ...tdStyle, color: C.o }}>{fmt(comPosnetBoleteria)}</td>
+                <td style={{ ...tdStyle, color: C.v }}>{fmt(comPosnetBoleteriaMaster)}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: C.o }}>{fmt(comPosnetBoleteria + comPosnetBoleteriaMaster)}</td>
+              </tr>
+              <tr style={{ background: C.s2 + "44" }}>
+                <td style={{ ...tdStyle, color: C.w }}>Barra</td>
+                <td style={{ ...tdStyle, color: C.t2 }}>5%</td>
+                <td style={{ ...tdStyle, color: C.o }}>{fmt(comPosnetBarra)}</td>
+                <td style={{ ...tdStyle, color: C.v }}>{fmt(comPosnetBarraMaster)}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: C.o }}>{fmt(comPosnetBarra + comPosnetBarraMaster)}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr style={{ background: C.s3 }}>
+                <td colSpan={2} style={{ ...tdStyle, fontWeight: 700, color: C.w }}>TOTAL</td>
+                <td style={{ ...tdStyle, fontWeight: 700, color: C.o }}>{fmt(totalComPosnet)}</td>
+                <td style={{ ...tdStyle, fontWeight: 700, color: C.v }}>{fmt(totalComPosnetMaster)}</td>
+                <td style={{ ...tdStyle, fontWeight: 700, color: C.o }}>{fmt(totalComPosnet + totalComPosnetMaster)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
         <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>
@@ -667,7 +985,6 @@ export default function EventoLive() {
           </tfoot>
         </table>
       </div>
-
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
         <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>
           Gastos extra
@@ -698,7 +1015,6 @@ export default function EventoLive() {
       </div>
     </div>
   );
-
   /* ══════════════════════════════ */
   /*       TAB: COMISIONES         */
   /* ══════════════════════════════ */
@@ -713,7 +1029,6 @@ export default function EventoLive() {
           <KPI label="Top vendedor" value={topV ? topV.vendedor : "-"} color={C.g}
             sub={topV ? fmt(topV.ventas) + " en ventas" : ""} />
         </div>
-
         <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -752,7 +1067,6 @@ export default function EventoLive() {
             </tfoot>
           </table>
         </div>
-
         <div style={{ ...card, marginTop: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>Ranking por ventas</div>
           {[...data.comisiones].sort((a, b) => b.ventas - a.ventas).map((r, i) => {
@@ -777,7 +1091,6 @@ export default function EventoLive() {
       </div>
     );
   };
-
   /* ══════════════════════════════ */
   /*       TAB: BOLETERIA          */
   /* ══════════════════════════════ */
@@ -789,7 +1102,6 @@ export default function EventoLive() {
         <KPI label="Ticket promedio" value={totalEntradas > 0 ? fmt(totalBoleteria / totalEntradas) : "$0"} color={C.v} />
         <KPI label="Tipos de entrada" value={data.boleteria.length} color={C.t2} />
       </div>
-
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
@@ -823,7 +1135,6 @@ export default function EventoLive() {
           </tfoot>
         </table>
       </div>
-
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>Composicion de entradas</div>
         {data.boleteria.map((r, i) => (
@@ -843,13 +1154,11 @@ export default function EventoLive() {
       </div>
     </div>
   );
-
   /* ══════════════════════════════ */
   /*       RENDER                  */
   /* ══════════════════════════════ */
   return (
     <div style={{ padding: 20, maxWidth: 1200, margin: "0 auto" }}>
-
       {/* MODO DEMO banner */}
       {!INDEX_ID && (
         <div style={{
@@ -865,7 +1174,6 @@ export default function EventoLive() {
           </div>
         </div>
       )}
-
       {/* HEADER */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
@@ -896,10 +1204,8 @@ export default function EventoLive() {
           </div>
         </div>
       </div>
-
       {/* EVENT SELECTOR */}
       <EventSelector />
-
       {/* TAB NAV */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
         {TABS.map(t => (
@@ -919,7 +1225,6 @@ export default function EventoLive() {
           </button>
         ))}
       </div>
-
       {/* CONTENT */}
       {tab === "resumen" && <TabResumen />}
       {tab === "mesas" && <TabMesas />}
