@@ -1,14 +1,11 @@
 import Papa from "papaparse";
-
 const BASE = "https://docs.google.com/spreadsheets/d";
-
 export const SHEET_IDS = {
   indice:       "1lod65Sae0WkJRq6YVpYj_CtJmeBNPlU1ETRCW2RQBD8",
   ejecutivo:    "10FKXj1lIE7dN5UHkP9i0c8eb3G1gkYnes4HjE-GyZ_A",
   proyeccion:   "1z32e52_B6xHsduDsCZZFzpXAUwnCfM5aJ5UAZnz1Iis",
   baseClientes: "1HDrFsfNxEtSD_2KZqFJukK8XaLWd7s2VYabwcnfRjmI",
 };
-
 export async function fetchSheet(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -18,18 +15,16 @@ export async function fetchSheet(sheetId, tabName) {
     const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
     return data;
   }
-  // Buscar header dinamicamente (puede estar en fila 1, 2 o 3)
   const lines = text.split("\n");
   const headerIdx = lines.findIndex(l => l.includes("FECHA") && l.includes("CONCEPTO") && l.includes("MONTO"));
   const csvData = headerIdx >= 0 ? lines.slice(headerIdx).join("\n") : lines.slice(1).join("\n");
-  const { data } = Papa.parse(csvData, { 
-    header: true, 
+  const { data } = Papa.parse(csvData, {
+    header: true,
     skipEmptyLines: true,
     transformHeader: h => h.trim()
   });
   return data;
 }
-
 async function fetchSheetJSON(sheetId, tabName) {
   const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
@@ -40,13 +35,11 @@ async function fetchSheetJSON(sheetId, tabName) {
     row.c.map(cell => cell ? cell.v : null)
   );
 }
-
 function parseNum(val) {
   if (val === null || val === undefined || val === "") return 0;
   if (typeof val === "number") return val;
   return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
 }
-
 const MESES_PROY = [
   {nombre:"MAR", mesNum:3},  {nombre:"ABR", mesNum:4},
   {nombre:"MAY", mesNum:5},  {nombre:"JUN", mesNum:6},
@@ -55,7 +48,6 @@ const MESES_PROY = [
   {nombre:"NOV", mesNum:11},
 ];
 const COL_START = 4;
-
 export async function fetchProyeccion() {
   const sheetId = SHEET_IDS.proyeccion;
   try {
@@ -99,7 +91,6 @@ export async function fetchProyeccion() {
     return { meses: [], totalIngresos: 0, totalEgresos: 0, totalResultado: 0, margenAnual: 0, egresosConcepto: {}, cargado: false };
   }
 }
-
 const MESES_EJ = [
   {num:1,  nombre:"ENE", tab:"ENERO_MENSUAL"},
   {num:2,  nombre:"FEB", tab:"FEBRERO_MENSUAL"},
@@ -114,7 +105,6 @@ const MESES_EJ = [
   {num:11, nombre:"NOV", tab:"NOVIEMBRE_MENSUAL"},
   {num:12, nombre:"DIC", tab:"DICIEMBRE_MENSUAL"},
 ];
-
 async function fetchTotalesMes(sheetId, tab) {
   try {
     const rows = await fetchSheetJSON(sheetId, tab);
@@ -135,7 +125,6 @@ async function fetchTotalesMes(sheetId, tab) {
     return { totalIngresos, totalEgresos };
   } catch { return { totalIngresos: 0, totalEgresos: 0 }; }
 }
-
 export async function fetchEjecutivo() {
   const sheetId = SHEET_IDS.ejecutivo;
   const totalesPorMes = await Promise.all(MESES_EJ.map(m => fetchTotalesMes(sheetId, m.tab)));
@@ -143,7 +132,6 @@ export async function fetchEjecutivo() {
     const { totalIngresos, totalEgresos } = totalesPorMes[i];
     return { mes: m.nombre, mesNum: m.num, ingresos: totalIngresos, egresos: totalEgresos, resultado: totalIngresos - totalEgresos };
   });
-
   let porConcepto = {};
   let porSubConcepto = {};
   try {
@@ -166,12 +154,10 @@ export async function fetchEjecutivo() {
   } catch (e) {
     console.error("fetchEjecutivo -> PAGOS_MAESTRO:", e);
   }
-
   const totalIngresos = cashflow.reduce((s, m) => s + m.ingresos, 0);
   const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos,  0);
   return { cashflow, totalIngresos, totalEgresos, resultado: totalIngresos - totalEgresos, porConcepto, porSubConcepto };
 }
-
 export async function fetchIndice() {
   const rows = await fetchSheet(SHEET_IDS.indice, "INDICE");
   return rows.map(r => ({
@@ -182,16 +168,102 @@ export async function fetchIndice() {
   })).filter(r => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
 
+/* ═══════════════════════════════════════════════════════════
+   fetchEvento — ACTUALIZADO con Comisiones Posnet
+   Lee RESUMEN, RESUMEN MASTER, RESUMEN LADO A
+   Extrae comisiones posnet por sección
+   ═══════════════════════════════════════════════════════════ */
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
   const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
   await Promise.all(Object.keys(tabs).map(async tab => {
     try { tabs[tab] = await fetchSheet(sheetId, tab); } catch { tabs[tab] = []; }
   }));
+
+  /* ── También intentar leer RESUMEN MASTER y RESUMEN LADO A ── */
+  let resumenMasterRows = [];
+  let resumenLadoARows = [];
+  try { resumenMasterRows = await fetchSheet(sheetId, "RESUMEN MASTER"); } catch {}
+  try { resumenLadoARows = await fetchSheet(sheetId, "RESUMEN LADO A"); } catch {}
+
   const resumen = tabs["RESUMEN"];
+
+  /* ── findMonto con tracking de sección para posnet ── */
   const findMonto = kw => {
     const row = resumen.find(r => Object.values(r).some(v => String(v).toLowerCase().includes(kw.toLowerCase())));
     return row ? parseNum(row["MONTO"] || row["TOTAL"] || "") : 0;
   };
+
+  /* ── Extraer comisiones posnet del RESUMEN ── */
+  let seccion = "general";
+  let comPosnetIngresos = 0, comPosnetBoleteria = 0, comPosnetBarra = 0;
+  let posnetIdx = 0;
+
+  resumen.forEach(r => {
+    const keys = Object.keys(r);
+    const concepto = (r[keys[0]] || "").trim().toLowerCase();
+    const valor = parseNum(r[keys[1]] || r[keys[2]] || "");
+
+    // Track section
+    if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision")) {
+      seccion = "ingresos";
+    }
+    if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub")) {
+      seccion = "boleteria";
+    }
+    if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub")) {
+      seccion = "barra";
+    }
+
+    // Detect posnet commissions
+    if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
+      if (concepto.includes("ingreso") || concepto.includes("mesa")) {
+        comPosnetIngresos = valor;
+      } else if (concepto.includes("boleter")) {
+        comPosnetBoleteria = valor;
+      } else if (concepto.includes("barra")) {
+        comPosnetBarra = valor;
+      } else if (seccion === "ingresos") {
+        comPosnetIngresos = valor;
+      } else if (seccion === "boleteria") {
+        comPosnetBoleteria = valor;
+      } else if (seccion === "barra") {
+        comPosnetBarra = valor;
+      } else {
+        posnetIdx++;
+        if (posnetIdx === 1) comPosnetIngresos = valor;
+        else if (posnetIdx === 2) comPosnetBoleteria = valor;
+        else if (posnetIdx === 3) comPosnetBarra = valor;
+      }
+    }
+  });
+
+  const totalComPosnet = comPosnetIngresos + comPosnetBoleteria + comPosnetBarra;
+
+  /* ── Misma lógica para RESUMEN MASTER ── */
+  let comPosnetIngresosMaster = 0, comPosnetBoleteriaMaster = 0, comPosnetBarraMaster = 0;
+  if (resumenMasterRows.length > 0) {
+    let secM = "general";
+    let posnetIdxM = 0;
+    resumenMasterRows.forEach(r => {
+      const keys = Object.keys(r);
+      const concepto = (r[keys[0]] || "").trim().toLowerCase();
+      const valor = parseNum(r[keys[1]] || r[keys[2]] || "");
+      if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision")) secM = "ingresos";
+      if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub")) secM = "boleteria";
+      if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub")) secM = "barra";
+      if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
+        if (concepto.includes("ingreso") || concepto.includes("mesa")) comPosnetIngresosMaster = valor;
+        else if (concepto.includes("boleter")) comPosnetBoleteriaMaster = valor;
+        else if (concepto.includes("barra")) comPosnetBarraMaster = valor;
+        else if (secM === "ingresos") comPosnetIngresosMaster = valor;
+        else if (secM === "boleteria") comPosnetBoleteriaMaster = valor;
+        else if (secM === "barra") comPosnetBarraMaster = valor;
+        else { posnetIdxM++; if (posnetIdxM===1) comPosnetIngresosMaster=valor; else if (posnetIdxM===2) comPosnetBoleteriaMaster=valor; else if (posnetIdxM===3) comPosnetBarraMaster=valor; }
+      }
+    });
+  }
+  const totalComPosnetMaster = comPosnetIngresosMaster + comPosnetBoleteriaMaster + comPosnetBarraMaster;
+
   const att = tabs["BOLETERIA"].reduce((s, r) => s + parseNum(r["CANTIDAD"] || ""), 0);
   const vS = {};
   tabs["COMISIONES"].forEach(r => {
@@ -206,9 +278,21 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
     rM: findMonto("mesa"), rP: findMonto("boleter") || findMonto("puerta"), rB: findMonto("barra"),
     costs: [0,0,0, findMonto("personal"), findMonto("cmv")||findMonto("bebida"), 0,0,0, findMonto("comision"), findMonto("extra")],
     vS,
+    /* ── NUEVO: Comisiones Posnet ── */
+    posnet: {
+      ingresos: comPosnetIngresos,
+      boleteria: comPosnetBoleteria,
+      barra: comPosnetBarra,
+      total: totalComPosnet
+    },
+    posnetMaster: {
+      ingresos: comPosnetIngresosMaster,
+      boleteria: comPosnetBoleteriaMaster,
+      barra: comPosnetBarraMaster,
+      total: totalComPosnetMaster
+    }
   };
 }
-
 export async function fetchTodosLosEventos() {
   const indice = await fetchIndice();
   if (!indice.length) return [];
