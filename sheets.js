@@ -42,18 +42,20 @@ function parseNum(val) {
 }
 function parseMesFromFecha(fechaStr) {
   if (!fechaStr) return -1;
-  const s = String(fechaStr).trim();
-  if (!s || s === "0" || s === "null" || s === "undefined") return -1;
+  // Limpiar comillas, espacios, caracteres raros
+  const s = String(fechaStr).trim().replace(/^["']+|["']+$/g, "").trim();
+  if (!s || s === "0" || s === "null" || s === "undefined" || s === "#N/A" || s === "#REF!") return -1;
   // Google Sheets gviz JSON: Date(2026,0,15)
-  if (s.startsWith("Date(")) {
-    const parts = s.replace("Date(","").replace(")","").split(",");
-    return parseInt(parts[1]); // already 0-indexed
+  if (s.includes("Date(")) {
+    const m = s.match(/Date\((\d+),(\d+),(\d+)\)/);
+    if (m) return parseInt(m[2]); // already 0-indexed
   }
-  // Slash format: DD/MM/YYYY or MM/DD/YYYY
+  // Slash format: DD/MM/YYYY or MM/DD/YYYY or D/M/YY
   const slashParts = s.split("/");
   if (slashParts.length === 3) {
     const p1 = parseInt(slashParts[0]);
     const p2 = parseInt(slashParts[1]);
+    if (isNaN(p1) || isNaN(p2)) return -1;
     if (p1 > 12) return p2 - 1; // must be DD/MM/YYYY
     if (p2 > 12) return p1 - 1; // must be MM/DD/YYYY
     return p2 - 1; // ambiguous, assume DD/MM/YYYY (Argentina)
@@ -64,15 +66,21 @@ function parseMesFromFecha(fechaStr) {
     if (dashParts[0].length === 4) return parseInt(dashParts[1]) - 1;
     return parseInt(dashParts[1]) - 1;
   }
-  // Excel serial date number
+  // Dot format: DD.MM.YYYY
+  const dotParts = s.split(".");
+  if (dotParts.length === 3) {
+    const p2 = parseInt(dotParts[1]);
+    if (!isNaN(p2) && p2 >= 1 && p2 <= 12) return p2 - 1;
+  }
+  // Excel serial date number (int or float)
   const num = parseFloat(s);
   if (!isNaN(num) && num > 40000 && num < 60000) {
     const d = new Date((num - 25569) * 86400 * 1000);
     if (!isNaN(d.getTime())) return d.getMonth();
   }
-  // Try native Date parse
+  // Try native Date parse as last resort
   const d = new Date(s);
-  if (!isNaN(d.getTime())) return d.getMonth();
+  if (!isNaN(d.getTime()) && d.getFullYear() > 2000) return d.getMonth();
   return -1;
 }
 const MESES_PROY = [
@@ -169,61 +177,51 @@ export async function fetchEjecutivo() {
   });
   let porConcepto = {};
   let porSubConcepto = {};
-  // NUEVO: desglose mensual por concepto {concepto: [0,0,0,...12 meses]}
   let porConceptoMensual = {};
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
-    // DEBUG: log primeras 3 filas para ver formato de FECHA
+    // Buscar columnas dinámicamente (case-insensitive, trim)
+    const allCols = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const findColName = (keyword) => allCols.find(c => c.trim().toUpperCase().includes(keyword.toUpperCase())) || "";
+    const colFecha = findColName("FECHA");
+    const colConcepto = findColName("CONCEPTO");
+    const colSubConcepto = findColName("SUB") || findColName("SUBCONCEPTO");
+    const colMonto = findColName("MONTO");
+    console.log("[PAGOS] Columnas encontradas:", JSON.stringify({allCols, colFecha, colConcepto, colSubConcepto, colMonto}));
     if (rows.length > 0) {
-      console.log("[DEBUG PAGOS_MAESTRO] Columnas:", Object.keys(rows[0]));
-      console.log("[DEBUG PAGOS_MAESTRO] Primeras 3 filas:", rows.slice(0, 3).map(r => ({
-        FECHA: r["FECHA"] || r["FECHA "] || "N/A",
-        CONCEPTO: r["CONCEPTO"] || r["CONCEPTO "] || "N/A",
-        MONTO: r["MONTO"] || r["MONTO "] || "N/A"
-      })));
+      console.log("[PAGOS] Raw primeras 3 filas:", JSON.stringify(rows.slice(0,3)));
     }
-    let fechasParseadas = 0, fechasFallidas = 0;
+    let fechasOK = 0, fechasFail = 0;
     rows.forEach(r => {
-      const monto = parseNum(r["MONTO"] || r["MONTO "] || "");
+      const monto = parseNum(colMonto ? r[colMonto] : "");
       if (monto <= 0) return;
-      const concepto = String(r["CONCEPTO"] || r["CONCEPTO "] || "").trim().replace(/\.{2,}$/, "").trim();
-      const subConcepto = String(r["SUB-CONCEPTO"] || r["SUB-CONCEPTO "] || "").trim();
-      const fecha = r["FECHA"] || r["FECHA "] || "";
-      const mesIdx = parseMesFromFecha(fecha); // 0-indexed (0=ENE, 11=DIC)
-      if (mesIdx >= 0) fechasParseadas++; else fechasFallidas++;
+      const concepto = String(colConcepto ? r[colConcepto] : "").trim().replace(/\.{2,}$/, "").trim();
+      const subConcepto = String(colSubConcepto ? r[colSubConcepto] : "").trim();
+      const fechaRaw = colFecha ? r[colFecha] : "";
+      const mesIdx = parseMesFromFecha(fechaRaw);
+      if (mesIdx >= 0) fechasOK++; else { fechasFail++; if (fechasFail <= 3) console.log("[PAGOS] fecha fallida:", JSON.stringify(fechaRaw), typeof fechaRaw); }
       if (concepto && concepto.length >= 3) {
         porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
-        // Agregar al desglose mensual
-        if (!porConceptoMensual[concepto]) {
-          porConceptoMensual[concepto] = [0,0,0,0,0,0,0,0,0,0,0,0];
-        }
-        if (mesIdx >= 0 && mesIdx < 12) {
-          porConceptoMensual[concepto][mesIdx] += monto;
-        }
+        if (!porConceptoMensual[concepto]) porConceptoMensual[concepto] = [0,0,0,0,0,0,0,0,0,0,0,0];
+        if (mesIdx >= 0 && mesIdx < 12) porConceptoMensual[concepto][mesIdx] += monto;
       }
       if (subConcepto && subConcepto.length >= 2) {
         porSubConcepto[subConcepto] = (porSubConcepto[subConcepto] || 0) + monto;
       }
     });
-    console.log(`[DEBUG PAGOS_MAESTRO] Fechas parseadas OK: ${fechasParseadas}, fallidas: ${fechasFallidas}`);
-    console.log("[DEBUG PAGOS_MAESTRO] porConceptoMensual sample:", Object.entries(porConceptoMensual).slice(0,2).map(([k,v]) => ({concepto:k, meses:v})));
+    console.log(`[PAGOS] Fechas OK: ${fechasOK}, fallidas: ${fechasFail}`);
     if (Object.keys(porConcepto).length === 0) {
       porConcepto = { ...porSubConcepto };
-      // Si usamos subConcepto como fallback, también armar el mensual desde ahí
       porConceptoMensual = {};
       rows.forEach(r => {
-        const monto = parseNum(r["MONTO"] || r["MONTO "] || "");
+        const monto = parseNum(colMonto ? r[colMonto] : "");
         if (monto <= 0) return;
-        const subConcepto = String(r["SUB-CONCEPTO"] || r["SUB-CONCEPTO "] || "").trim();
-        const fecha = r["FECHA"] || r["FECHA "] || "";
-        const mesIdx = parseMesFromFecha(fecha);
+        const subConcepto = String(colSubConcepto ? r[colSubConcepto] : "").trim();
+        const fechaRaw = colFecha ? r[colFecha] : "";
+        const mesIdx = parseMesFromFecha(fechaRaw);
         if (subConcepto && subConcepto.length >= 2) {
-          if (!porConceptoMensual[subConcepto]) {
-            porConceptoMensual[subConcepto] = [0,0,0,0,0,0,0,0,0,0,0,0];
-          }
-          if (mesIdx >= 0 && mesIdx < 12) {
-            porConceptoMensual[subConcepto][mesIdx] += monto;
-          }
+          if (!porConceptoMensual[subConcepto]) porConceptoMensual[subConcepto] = [0,0,0,0,0,0,0,0,0,0,0,0];
+          if (mesIdx >= 0 && mesIdx < 12) porConceptoMensual[subConcepto][mesIdx] += monto;
         }
       });
     }
