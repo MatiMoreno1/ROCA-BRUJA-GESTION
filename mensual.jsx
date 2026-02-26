@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { fetchEjecutivo } from "./sheets.js";
-
 const MensualRB = () => {
   const C = {
     bg:"#060609", s1:"#0e0e14", s2:"#16161f", s3:"#1e1e2a",
@@ -9,7 +8,6 @@ const MensualRB = () => {
     b:"#60A5FA", o:"#FB923C", v:"#A78BFA", w:"#ffffff",
     mono:"'DM Mono',monospace", sans:"'DM Sans',sans-serif"
   };
-
   const f = (v) => {
     if(v==null)return"$0";
     const a=Math.abs(Math.round(v));
@@ -20,7 +18,6 @@ const MensualRB = () => {
     return (v<0?"-":"")+"$"+a.toLocaleString("es-AR");
   };
   const pct = (v) => ((v||0)*100).toFixed(1)+"%";
-
   const bx = (extra) => ({
     background:C.s1, border:"1px solid "+C.bd, borderRadius:12, padding:16, ...(extra||{})
   });
@@ -30,10 +27,8 @@ const MensualRB = () => {
     color:active?color:C.t2, borderWidth:1, borderStyle:"solid",
     borderColor:active?color+"44":"transparent"
   });
-
   const MESES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
   const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-
   const [tab, setTab] = useState(0);
   const [mesPrincipal, setMesPrincipal] = useState(0);
   const [concepto, setConcepto] = useState(null);
@@ -41,25 +36,21 @@ const MensualRB = () => {
   const [mes2, setMes2] = useState(1);
   const [ejecutivo, setEjecutivo] = useState(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     fetchEjecutivo()
       .then(data => { setEjecutivo(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
-
-  // Helpers desde ejecutivo
   const getIngresos = (mesIdx) => ejecutivo?.cashflow?.[mesIdx]?.ingresos || 0;
   const getEgresos = (mesIdx) => ejecutivo?.cashflow?.[mesIdx]?.egresos || 0;
   const getResultado = (mesIdx) => getIngresos(mesIdx) - getEgresos(mesIdx);
   const getTotalIngresos = () => ejecutivo?.totalIngresos || 0;
   const getTotalEgresos = () => ejecutivo?.totalEgresos || 0;
-
-  // Conceptos de egresos desde porConcepto
   const conceptosData = Object.entries(ejecutivo?.porConcepto || {})
     .filter(([,v]) => v > 0)
     .sort((a,b) => b[1] - a[1]);
-
+  // Datos mensuales por concepto
+  const conceptoMensual = ejecutivo?.porConceptoMensual || {};
   const Stat = ({label, value, color, sub}) => (
     <div style={{...bx(), flex:1, minWidth:180}}>
       <div style={{fontSize:12, color:C.t2, fontFamily:C.mono, marginBottom:8}}>{label}</div>
@@ -67,7 +58,6 @@ const MensualRB = () => {
       {sub && <div style={{fontSize:11, color:C.t2, fontFamily:C.mono, marginTop:4}}>{sub}</div>}
     </div>
   );
-
   const Bar = ({items}) => {
     const h = 180;
     const maxV = Math.max(...items.map(i => Math.abs(i.v)), 1);
@@ -82,32 +72,29 @@ const MensualRB = () => {
       </div>
     );
   };
-
-  const Table = ({headers, rows}) => (
+  const Table = ({headers, rows, stickyFirst}) => (
     <div style={{overflowX:"auto", ...bx()}}>
       <table style={{width:"100%", borderCollapse:"collapse", fontFamily:C.mono, fontSize:13}}>
         <thead>
           <tr style={{borderBottom:"1px solid "+C.bd}}>
-            {headers.map((h,i) => <th key={i} style={{padding:10, textAlign:"left", color:C.t2}}>{h}</th>)}
+            {headers.map((h,i) => <th key={i} style={{padding:10, textAlign:i===0?"left":"right", color:C.t2, whiteSpace:"nowrap", ...(stickyFirst && i===0 ? {position:"sticky", left:0, background:C.s1, zIndex:1} : {})}}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row,i) => (
             <tr key={i} style={{borderBottom:"1px solid "+C.bd, cursor:row.onClick?"pointer":"default"}} onClick={row.onClick}>
-              {row.cells.map((cell,j) => <td key={j} style={{padding:10, color:cell.color||C.tx}}>{cell.value}</td>)}
+              {row.cells.map((cell,j) => <td key={j} style={{padding:10, textAlign:j===0?"left":"right", color:cell.color||C.tx, whiteSpace:"nowrap", ...(stickyFirst && j===0 ? {position:"sticky", left:0, background:C.s1, zIndex:1} : {})}}>{cell.value}</td>)}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
-
   if (loading) return (
     <div style={{background:C.bg, color:C.tx, fontFamily:C.mono, padding:40, textAlign:"center"}}>
       Cargando datos del ejecutivo...
     </div>
   );
-
   // TAB 0: 12 Meses
   const Tab12M = () => {
     const totalIng = getTotalIngresos();
@@ -118,7 +105,6 @@ const MensualRB = () => {
     const conData = resultados.filter(r => r !== 0);
     const bestIdx = resultados.indexOf(Math.max(...resultados));
     const worstIdx = resultados.indexOf(Math.min(...resultados));
-
     return (
       <div style={{display:"flex", flexDirection:"column", gap:16}}>
         <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
@@ -155,13 +141,17 @@ const MensualRB = () => {
       </div>
     );
   };
-
   // TAB 1: Detalle Mes
   const TabDetalleMes = () => {
     const ing = getIngresos(mesPrincipal);
     const egr = getEgresos(mesPrincipal);
     const res = ing - egr;
     const mar = ing > 0 ? res / ing : 0;
+    // Conceptos del mes seleccionado
+    const conceptosMes = conceptosData
+      .map(([k]) => [k, (conceptoMensual[k] || [])[mesPrincipal] || 0])
+      .filter(([,v]) => v > 0)
+      .sort((a,b) => b[1] - a[1]);
     return (
       <div style={{display:"flex", flexDirection:"column", gap:16}}>
         <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
@@ -175,7 +165,13 @@ const MensualRB = () => {
           <Stat label="Egresos" value={f(egr)} color={C.r} />
           <Stat label="Resultado" value={f(res)} color={res>=0?C.g:C.r} sub={pct(mar)} />
         </div>
-        {ing === 0 && egr === 0 && (
+        {conceptosMes.length > 0 && (
+          <div style={bx()}>
+            <h3 style={{color:C.tx, fontFamily:C.sans, margin:"0 0 12px 0"}}>Conceptos de {MESES_FULL[mesPrincipal]}</h3>
+            <Bar items={conceptosMes.slice(0,8).map(([k,v]) => ({l:k.substring(0,12), v, c:C.o}))} />
+          </div>
+        )}
+        {ing === 0 && egr === 0 && conceptosMes.length === 0 && (
           <div style={{...bx(), color:C.t2, textAlign:"center", padding:32}}>
             Sin datos para {MESES_FULL[mesPrincipal]}
           </div>
@@ -183,13 +179,19 @@ const MensualRB = () => {
       </div>
     );
   };
-
-  // TAB 2: Conceptos
+  // TAB 2: Conceptos (ACTUALIZADO con desglose mensual)
   const TabConceptos = () => {
     const selConcepto = concepto || (conceptosData[0]?.[0] || null);
     const totalEgr = getTotalEgresos();
     const montoConcepto = ejecutivo?.porConcepto?.[selConcepto] || 0;
     const pctTotal = totalEgr > 0 ? montoConcepto / totalEgr : 0;
+    // Datos mensuales del concepto seleccionado
+    const mensualSel = conceptoMensual[selConcepto] || [];
+    // Detectar meses con data para este concepto
+    const mesesConData = mensualSel.filter(v => v > 0).length;
+    const promedioMes = mesesConData > 0 ? montoConcepto / mesesConData : 0;
+    const maxMesVal = Math.max(...mensualSel, 0);
+    const maxMesIdx = mensualSel.indexOf(maxMesVal);
     return (
       <div style={{display:"flex", flexDirection:"column", gap:16}}>
         <div style={{display:"flex", gap:6, flexWrap:"wrap", maxHeight:120, overflowY:"auto"}}>
@@ -200,23 +202,39 @@ const MensualRB = () => {
           ))}
         </div>
         {selConcepto && (
-          <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
-            <Stat label="Total Anual" value={f(montoConcepto)} color={C.r} />
-            <Stat label="% del Total" value={pct(pctTotal)} color={C.y} />
-          </div>
+          <>
+            <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
+              <Stat label="Total Anual" value={f(montoConcepto)} color={C.r} />
+              <Stat label="% del Total" value={pct(pctTotal)} color={C.y} />
+              <Stat label="Promedio/Mes" value={f(promedioMes)} color={C.o} sub={mesesConData+" meses con data"} />
+              {maxMesVal > 0 && <Stat label="Mes Pico" value={MESES[maxMesIdx]} color={C.p} sub={f(maxMesVal)} />}
+            </div>
+            {/* Barras mensuales del concepto seleccionado */}
+            <div style={bx()}>
+              <h3 style={{color:C.tx, fontFamily:C.sans, margin:"0 0 12px 0"}}>{selConcepto} — por Mes</h3>
+              <Bar items={MESES.map((m,i) => ({l:m, v:mensualSel[i]||0, c:mensualSel[i]>0?C.v:C.s2}))} />
+            </div>
+          </>
         )}
-        <Table headers={["Concepto","Total Anual","% del Gasto"]} rows={conceptosData.map(([k,v]) => ({
-          cells:[
-            {value:k},
-            {value:f(v), color:C.o},
-            {value:pct(totalEgr>0?v/totalEgr:0), color:C.y}
-          ],
-          onClick: () => setConcepto(k)
-        }))} />
+        {/* Tabla completa: concepto + cada mes + total + % */}
+        <Table stickyFirst headers={["Concepto", ...MESES, "Total", "% Gasto"]} rows={conceptosData.map(([k,v]) => {
+          const mensual = conceptoMensual[k] || [];
+          return {
+            cells: [
+              {value: k.length > 18 ? k.slice(0,17)+"." : k},
+              ...MESES.map((_,i) => ({
+                value: mensual[i] > 0 ? f(mensual[i]) : "-",
+                color: mensual[i] > 0 ? C.o : C.s3
+              })),
+              {value: f(v), color: C.r},
+              {value: pct(totalEgr>0?v/totalEgr:0), color: C.y}
+            ],
+            onClick: () => setConcepto(k)
+          };
+        })} />
       </div>
     );
   };
-
   // TAB 3: Comparar
   const TabComparar = () => {
     const ing1=getIngresos(mes1), egr1=getEgresos(mes1), res1=ing1-egr1;
@@ -248,7 +266,6 @@ const MensualRB = () => {
       </div>
     );
   };
-
   // TAB 4: Cash Flow
   const TabCashFlow = () => {
     let acum = 0;
@@ -278,16 +295,14 @@ const MensualRB = () => {
       </div>
     );
   };
-
   const tabs = ["12 Meses","Detalle Mes","Conceptos","Comparar","Cash Flow"];
   const renders = [<Tab12M/>,<TabDetalleMes/>,<TabConceptos/>,<TabComparar/>,<TabCashFlow/>];
-
   return (
     <div style={{background:C.bg, color:C.tx, fontFamily:C.sans, padding:24}}>
       <div style={{maxWidth:1400, margin:"0 auto"}}>
         <div style={{marginBottom:24}}>
           <div style={{fontSize:28, fontWeight:"bold", fontFamily:C.mono}}>ROCA BRUJA</div>
-          <div style={{fontSize:12, color:C.t2, fontFamily:C.mono}}>MENSUAL v2.0 — GR Ejecutivo 2026</div>
+          <div style={{fontSize:12, color:C.t2, fontFamily:C.mono}}>MENSUAL v2.1 — GR Ejecutivo 2026</div>
         </div>
         <div style={{display:"flex", gap:8, marginBottom:24, flexWrap:"wrap"}}>
           {tabs.map((label,i) => (
@@ -299,5 +314,4 @@ const MensualRB = () => {
     </div>
   );
 };
-
 export default MensualRB;
