@@ -43,22 +43,34 @@ function parseNum(val) {
 function parseMesFromFecha(fechaStr) {
   if (!fechaStr) return -1;
   const s = String(fechaStr).trim();
-  // Try Date object first (handles "Date(2026,0,15)" from gviz and ISO dates)
+  if (!s || s === "0" || s === "null" || s === "undefined") return -1;
+  // Google Sheets gviz JSON: Date(2026,0,15)
   if (s.startsWith("Date(")) {
     const parts = s.replace("Date(","").replace(")","").split(",");
-    return parseInt(parts[1]); // 0-indexed month
+    return parseInt(parts[1]); // already 0-indexed
   }
-  // Try DD/MM/YYYY or D/M/YYYY
+  // Slash format: DD/MM/YYYY or MM/DD/YYYY
   const slashParts = s.split("/");
   if (slashParts.length === 3) {
-    return parseInt(slashParts[1]) - 1; // convert to 0-indexed
+    const p1 = parseInt(slashParts[0]);
+    const p2 = parseInt(slashParts[1]);
+    if (p1 > 12) return p2 - 1; // must be DD/MM/YYYY
+    if (p2 > 12) return p1 - 1; // must be MM/DD/YYYY
+    return p2 - 1; // ambiguous, assume DD/MM/YYYY (Argentina)
   }
-  // Try YYYY-MM-DD
+  // Dash format: YYYY-MM-DD or DD-MM-YYYY
   const dashParts = s.split("-");
-  if (dashParts.length === 3 && dashParts[0].length === 4) {
+  if (dashParts.length === 3) {
+    if (dashParts[0].length === 4) return parseInt(dashParts[1]) - 1;
     return parseInt(dashParts[1]) - 1;
   }
-  // Try parsing as Date
+  // Excel serial date number
+  const num = parseFloat(s);
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    const d = new Date((num - 25569) * 86400 * 1000);
+    if (!isNaN(d.getTime())) return d.getMonth();
+  }
+  // Try native Date parse
   const d = new Date(s);
   if (!isNaN(d.getTime())) return d.getMonth();
   return -1;
@@ -161,6 +173,16 @@ export async function fetchEjecutivo() {
   let porConceptoMensual = {};
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
+    // DEBUG: log primeras 3 filas para ver formato de FECHA
+    if (rows.length > 0) {
+      console.log("[DEBUG PAGOS_MAESTRO] Columnas:", Object.keys(rows[0]));
+      console.log("[DEBUG PAGOS_MAESTRO] Primeras 3 filas:", rows.slice(0, 3).map(r => ({
+        FECHA: r["FECHA"] || r["FECHA "] || "N/A",
+        CONCEPTO: r["CONCEPTO"] || r["CONCEPTO "] || "N/A",
+        MONTO: r["MONTO"] || r["MONTO "] || "N/A"
+      })));
+    }
+    let fechasParseadas = 0, fechasFallidas = 0;
     rows.forEach(r => {
       const monto = parseNum(r["MONTO"] || r["MONTO "] || "");
       if (monto <= 0) return;
@@ -168,6 +190,7 @@ export async function fetchEjecutivo() {
       const subConcepto = String(r["SUB-CONCEPTO"] || r["SUB-CONCEPTO "] || "").trim();
       const fecha = r["FECHA"] || r["FECHA "] || "";
       const mesIdx = parseMesFromFecha(fecha); // 0-indexed (0=ENE, 11=DIC)
+      if (mesIdx >= 0) fechasParseadas++; else fechasFallidas++;
       if (concepto && concepto.length >= 3) {
         porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
         // Agregar al desglose mensual
@@ -182,6 +205,8 @@ export async function fetchEjecutivo() {
         porSubConcepto[subConcepto] = (porSubConcepto[subConcepto] || 0) + monto;
       }
     });
+    console.log(`[DEBUG PAGOS_MAESTRO] Fechas parseadas OK: ${fechasParseadas}, fallidas: ${fechasFallidas}`);
+    console.log("[DEBUG PAGOS_MAESTRO] porConceptoMensual sample:", Object.entries(porConceptoMensual).slice(0,2).map(([k,v]) => ({concepto:k, meses:v})));
     if (Object.keys(porConcepto).length === 0) {
       porConcepto = { ...porSubConcepto };
       // Si usamos subConcepto como fallback, también armar el mensual desde ahí
