@@ -40,6 +40,29 @@ function parseNum(val) {
   if (typeof val === "number") return val;
   return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
 }
+function parseMesFromFecha(fechaStr) {
+  if (!fechaStr) return -1;
+  const s = String(fechaStr).trim();
+  // Try Date object first (handles "Date(2026,0,15)" from gviz and ISO dates)
+  if (s.startsWith("Date(")) {
+    const parts = s.replace("Date(","").replace(")","").split(",");
+    return parseInt(parts[1]); // 0-indexed month
+  }
+  // Try DD/MM/YYYY or D/M/YYYY
+  const slashParts = s.split("/");
+  if (slashParts.length === 3) {
+    return parseInt(slashParts[1]) - 1; // convert to 0-indexed
+  }
+  // Try YYYY-MM-DD
+  const dashParts = s.split("-");
+  if (dashParts.length === 3 && dashParts[0].length === 4) {
+    return parseInt(dashParts[1]) - 1;
+  }
+  // Try parsing as Date
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.getMonth();
+  return -1;
+}
 const MESES_PROY = [
   {nombre:"MAR", mesNum:3},  {nombre:"ABR", mesNum:4},
   {nombre:"MAY", mesNum:5},  {nombre:"JUN", mesNum:6},
@@ -134,6 +157,8 @@ export async function fetchEjecutivo() {
   });
   let porConcepto = {};
   let porSubConcepto = {};
+  // NUEVO: desglose mensual por concepto {concepto: [0,0,0,...12 meses]}
+  let porConceptoMensual = {};
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
     rows.forEach(r => {
@@ -141,8 +166,17 @@ export async function fetchEjecutivo() {
       if (monto <= 0) return;
       const concepto = String(r["CONCEPTO"] || r["CONCEPTO "] || "").trim().replace(/\.{2,}$/, "").trim();
       const subConcepto = String(r["SUB-CONCEPTO"] || r["SUB-CONCEPTO "] || "").trim();
+      const fecha = r["FECHA"] || r["FECHA "] || "";
+      const mesIdx = parseMesFromFecha(fecha); // 0-indexed (0=ENE, 11=DIC)
       if (concepto && concepto.length >= 3) {
         porConcepto[concepto] = (porConcepto[concepto] || 0) + monto;
+        // Agregar al desglose mensual
+        if (!porConceptoMensual[concepto]) {
+          porConceptoMensual[concepto] = [0,0,0,0,0,0,0,0,0,0,0,0];
+        }
+        if (mesIdx >= 0 && mesIdx < 12) {
+          porConceptoMensual[concepto][mesIdx] += monto;
+        }
       }
       if (subConcepto && subConcepto.length >= 2) {
         porSubConcepto[subConcepto] = (porSubConcepto[subConcepto] || 0) + monto;
@@ -150,13 +184,30 @@ export async function fetchEjecutivo() {
     });
     if (Object.keys(porConcepto).length === 0) {
       porConcepto = { ...porSubConcepto };
+      // Si usamos subConcepto como fallback, también armar el mensual desde ahí
+      porConceptoMensual = {};
+      rows.forEach(r => {
+        const monto = parseNum(r["MONTO"] || r["MONTO "] || "");
+        if (monto <= 0) return;
+        const subConcepto = String(r["SUB-CONCEPTO"] || r["SUB-CONCEPTO "] || "").trim();
+        const fecha = r["FECHA"] || r["FECHA "] || "";
+        const mesIdx = parseMesFromFecha(fecha);
+        if (subConcepto && subConcepto.length >= 2) {
+          if (!porConceptoMensual[subConcepto]) {
+            porConceptoMensual[subConcepto] = [0,0,0,0,0,0,0,0,0,0,0,0];
+          }
+          if (mesIdx >= 0 && mesIdx < 12) {
+            porConceptoMensual[subConcepto][mesIdx] += monto;
+          }
+        }
+      });
     }
   } catch (e) {
     console.error("fetchEjecutivo -> PAGOS_MAESTRO:", e);
   }
   const totalIngresos = cashflow.reduce((s, m) => s + m.ingresos, 0);
   const totalEgresos  = cashflow.reduce((s, m) => s + m.egresos,  0);
-  return { cashflow, totalIngresos, totalEgresos, resultado: totalIngresos - totalEgresos, porConcepto, porSubConcepto };
+  return { cashflow, totalIngresos, totalEgresos, resultado: totalIngresos - totalEgresos, porConcepto, porSubConcepto, porConceptoMensual };
 }
 export async function fetchIndice() {
   const rows = await fetchSheet(SHEET_IDS.indice, "INDICE");
@@ -167,79 +218,41 @@ export async function fetchIndice() {
     estado:  r["ESTADO"] || "",
   })).filter(r => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
-
-/* ═══════════════════════════════════════════════════════════
-   fetchEvento — ACTUALIZADO con Comisiones Posnet
-   Lee RESUMEN, RESUMEN MASTER, RESUMEN LADO A
-   Extrae comisiones posnet por sección
-   ═══════════════════════════════════════════════════════════ */
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
   const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
   await Promise.all(Object.keys(tabs).map(async tab => {
     try { tabs[tab] = await fetchSheet(sheetId, tab); } catch { tabs[tab] = []; }
   }));
-
-  /* ── También intentar leer RESUMEN MASTER y RESUMEN LADO A ── */
   let resumenMasterRows = [];
   let resumenLadoARows = [];
   try { resumenMasterRows = await fetchSheet(sheetId, "RESUMEN MASTER"); } catch {}
   try { resumenLadoARows = await fetchSheet(sheetId, "RESUMEN LADO A"); } catch {}
-
   const resumen = tabs["RESUMEN"];
-
-  /* ── findMonto con tracking de sección para posnet ── */
   const findMonto = kw => {
     const row = resumen.find(r => Object.values(r).some(v => String(v).toLowerCase().includes(kw.toLowerCase())));
     return row ? parseNum(row["MONTO"] || row["TOTAL"] || "") : 0;
   };
-
-  /* ── Extraer comisiones posnet del RESUMEN ── */
   let seccion = "general";
   let comPosnetIngresos = 0, comPosnetBoleteria = 0, comPosnetBarra = 0;
   let posnetIdx = 0;
-
   resumen.forEach(r => {
     const keys = Object.keys(r);
     const concepto = (r[keys[0]] || "").trim().toLowerCase();
     const valor = parseNum(r[keys[1]] || r[keys[2]] || "");
-
-    // Track section
-    if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision")) {
-      seccion = "ingresos";
-    }
-    if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub")) {
-      seccion = "boleteria";
-    }
-    if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub")) {
-      seccion = "barra";
-    }
-
-    // Detect posnet commissions
+    if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision")) seccion = "ingresos";
+    if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub")) seccion = "boleteria";
+    if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub")) seccion = "barra";
     if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
-      if (concepto.includes("ingreso") || concepto.includes("mesa")) {
-        comPosnetIngresos = valor;
-      } else if (concepto.includes("boleter")) {
-        comPosnetBoleteria = valor;
-      } else if (concepto.includes("barra")) {
-        comPosnetBarra = valor;
-      } else if (seccion === "ingresos") {
-        comPosnetIngresos = valor;
-      } else if (seccion === "boleteria") {
-        comPosnetBoleteria = valor;
-      } else if (seccion === "barra") {
-        comPosnetBarra = valor;
-      } else {
-        posnetIdx++;
-        if (posnetIdx === 1) comPosnetIngresos = valor;
-        else if (posnetIdx === 2) comPosnetBoleteria = valor;
-        else if (posnetIdx === 3) comPosnetBarra = valor;
-      }
+      if (concepto.includes("ingreso") || concepto.includes("mesa")) comPosnetIngresos = valor;
+      else if (concepto.includes("boleter")) comPosnetBoleteria = valor;
+      else if (concepto.includes("barra")) comPosnetBarra = valor;
+      else if (seccion === "ingresos") comPosnetIngresos = valor;
+      else if (seccion === "boleteria") comPosnetBoleteria = valor;
+      else if (seccion === "barra") comPosnetBarra = valor;
+      else { posnetIdx++; if (posnetIdx===1) comPosnetIngresos=valor; else if (posnetIdx===2) comPosnetBoleteria=valor; else if (posnetIdx===3) comPosnetBarra=valor; }
     }
   });
-
   const totalComPosnet = comPosnetIngresos + comPosnetBoleteria + comPosnetBarra;
-
-  /* ── Misma lógica para RESUMEN MASTER ── */
   let comPosnetIngresosMaster = 0, comPosnetBoleteriaMaster = 0, comPosnetBarraMaster = 0;
   if (resumenMasterRows.length > 0) {
     let secM = "general";
@@ -263,7 +276,6 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
     });
   }
   const totalComPosnetMaster = comPosnetIngresosMaster + comPosnetBoleteriaMaster + comPosnetBarraMaster;
-
   const att = tabs["BOLETERIA"].reduce((s, r) => s + parseNum(r["CANTIDAD"] || ""), 0);
   const vS = {};
   tabs["COMISIONES"].forEach(r => {
@@ -278,19 +290,8 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
     rM: findMonto("mesa"), rP: findMonto("boleter") || findMonto("puerta"), rB: findMonto("barra"),
     costs: [0,0,0, findMonto("personal"), findMonto("cmv")||findMonto("bebida"), 0,0,0, findMonto("comision"), findMonto("extra")],
     vS,
-    /* ── NUEVO: Comisiones Posnet ── */
-    posnet: {
-      ingresos: comPosnetIngresos,
-      boleteria: comPosnetBoleteria,
-      barra: comPosnetBarra,
-      total: totalComPosnet
-    },
-    posnetMaster: {
-      ingresos: comPosnetIngresosMaster,
-      boleteria: comPosnetBoleteriaMaster,
-      barra: comPosnetBarraMaster,
-      total: totalComPosnetMaster
-    }
+    posnet: { ingresos: comPosnetIngresos, boleteria: comPosnetBoleteria, barra: comPosnetBarra, total: totalComPosnet },
+    posnetMaster: { ingresos: comPosnetIngresosMaster, boleteria: comPosnetBoleteriaMaster, barra: comPosnetBarraMaster, total: totalComPosnetMaster }
   };
 }
 export async function fetchTodosLosEventos() {
