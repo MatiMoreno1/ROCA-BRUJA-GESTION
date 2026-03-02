@@ -42,43 +42,36 @@ function parseNum(val) {
 }
 function parseMesFromFecha(fechaStr) {
   if (!fechaStr) return -1;
-  // Limpiar comillas, espacios, caracteres raros
   const s = String(fechaStr).trim().replace(/^["']+|["']+$/g, "").trim();
   if (!s || s === "0" || s === "null" || s === "undefined" || s === "#N/A" || s === "#REF!") return -1;
-  // Google Sheets gviz JSON: Date(2026,0,15)
   if (s.includes("Date(")) {
     const m = s.match(/Date\((\d+),(\d+),(\d+)\)/);
-    if (m) return parseInt(m[2]); // already 0-indexed
+    if (m) return parseInt(m[2]);
   }
-  // Slash format: DD/MM/YYYY or MM/DD/YYYY or D/M/YY
   const slashParts = s.split("/");
   if (slashParts.length === 3) {
     const p1 = parseInt(slashParts[0]);
     const p2 = parseInt(slashParts[1]);
     if (isNaN(p1) || isNaN(p2)) return -1;
-    if (p1 > 12) return p2 - 1; // must be DD/MM/YYYY
-    if (p2 > 12) return p1 - 1; // must be MM/DD/YYYY
-    return p2 - 1; // ambiguous, assume DD/MM/YYYY (Argentina)
+    if (p1 > 12) return p2 - 1;
+    if (p2 > 12) return p1 - 1;
+    return p2 - 1;
   }
-  // Dash format: YYYY-MM-DD or DD-MM-YYYY
   const dashParts = s.split("-");
   if (dashParts.length === 3) {
     if (dashParts[0].length === 4) return parseInt(dashParts[1]) - 1;
     return parseInt(dashParts[1]) - 1;
   }
-  // Dot format: DD.MM.YYYY
   const dotParts = s.split(".");
   if (dotParts.length === 3) {
     const p2 = parseInt(dotParts[1]);
     if (!isNaN(p2) && p2 >= 1 && p2 <= 12) return p2 - 1;
   }
-  // Excel serial date number (int or float)
   const num = parseFloat(s);
   if (!isNaN(num) && num > 40000 && num < 60000) {
     const d = new Date((num - 25569) * 86400 * 1000);
     if (!isNaN(d.getTime())) return d.getMonth();
   }
-  // Try native Date parse as last resort
   const d = new Date(s);
   if (!isNaN(d.getTime()) && d.getFullYear() > 2000) return d.getMonth();
   return -1;
@@ -180,7 +173,6 @@ export async function fetchEjecutivo() {
   let porConceptoMensual = {};
   try {
     const rows = await fetchSheet(sheetId, "PAGOS_MAESTRO");
-    // Buscar columnas dinámicamente (case-insensitive, trim)
     const allCols = rows.length > 0 ? Object.keys(rows[0]) : [];
     const findColName = (keyword) => allCols.find(c => c.trim().toUpperCase().includes(keyword.toUpperCase())) || "";
     const colFecha = findColName("FECHA");
@@ -241,6 +233,15 @@ export async function fetchIndice() {
     estado:  r["ESTADO"] || "",
   })).filter(r => r.sheetId && !r.sheetId.includes("EJEMPLO"));
 }
+
+// ─── FIX: helper para buscar monto en rows de cualquier hoja ───
+function findMontoEnRows(rows, keyword) {
+  const row = rows.find(r =>
+    Object.values(r).some(v => String(v).toLowerCase().includes(keyword.toLowerCase()))
+  );
+  return row ? parseNum(row["MONTO"] || row["TOTAL"] || Object.values(row)[1] || "") : 0;
+}
+
 export async function fetchEvento(sheetId, fecha, nombre, estado) {
   const tabs = { RESUMEN: [], COMISIONES: [], BOLETERIA: [] };
   await Promise.all(Object.keys(tabs).map(async tab => {
@@ -250,19 +251,27 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
   let resumenLadoARows = [];
   try { resumenMasterRows = await fetchSheet(sheetId, "RESUMEN MASTER"); } catch {}
   try { resumenLadoARows = await fetchSheet(sheetId, "RESUMEN LADO A"); } catch {}
+
+  // ─── FIX: también intentar HOJA FINAL para datos consolidados ───
+  let hojaFinalRows = [];
+  try { hojaFinalRows = await fetchSheet(sheetId, "HOJA FINAL"); } catch {}
+
   const resumen = tabs["RESUMEN"];
-  const findMonto = kw => {
-    const row = resumen.find(r => Object.values(r).some(v => String(v).toLowerCase().includes(kw.toLowerCase())));
-    return row ? parseNum(row["MONTO"] || row["TOTAL"] || "") : 0;
-  };
+
+  // Usar HOJA FINAL si existe, si no RESUMEN
+  const resumenPrincipal = hojaFinalRows.length > 0 ? hojaFinalRows : resumen;
+
+  const findMonto = kw => findMontoEnRows(resumenPrincipal, kw);
+
   let seccion = "general";
   let comPosnetIngresos = 0, comPosnetBoleteria = 0, comPosnetBarra = 0;
   let posnetIdx = 0;
-  resumen.forEach(r => {
+  resumenPrincipal.forEach(r => {
     const keys = Object.keys(r);
     const concepto = (r[keys[0]] || "").trim().toLowerCase();
     const valor = parseNum(r[keys[1]] || r[keys[2]] || "");
     if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision")) seccion = "ingresos";
+    if (concepto.includes("lado a") && !concepto.includes("comision")) seccion = "ingresos";
     if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub")) seccion = "boleteria";
     if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub")) seccion = "barra";
     if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
@@ -276,6 +285,17 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
     }
   });
   const totalComPosnet = comPosnetIngresos + comPosnetBoleteria + comPosnetBarra;
+
+  // ─── FIX: buscar rM con múltiples keywords incluyendo "lado a" ───
+  let rM = findMonto("mesa") || findMonto("lado a") || findMonto("ingresos previos");
+
+  // Si HOJA FINAL no tiene mesas pero RESUMEN LADO A sí, usarlo
+  if (!rM && resumenLadoARows.length > 0) {
+    rM = findMontoEnRows(resumenLadoARows, "mesa")
+      || findMontoEnRows(resumenLadoARows, "subtotal")
+      || findMontoEnRows(resumenLadoARows, "ingreso");
+  }
+
   let comPosnetIngresosMaster = 0, comPosnetBoleteriaMaster = 0, comPosnetBarraMaster = 0;
   if (resumenMasterRows.length > 0) {
     let secM = "general";
@@ -285,6 +305,7 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
       const concepto = (r[keys[0]] || "").trim().toLowerCase();
       const valor = parseNum(r[keys[1]] || r[keys[2]] || "");
       if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision")) secM = "ingresos";
+      if (concepto.includes("lado a") && !concepto.includes("comision")) secM = "ingresos";
       if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub")) secM = "boleteria";
       if (concepto.includes("barra") && !concepto.includes("comision") && !concepto.includes("sub")) secM = "barra";
       if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
@@ -299,6 +320,7 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
     });
   }
   const totalComPosnetMaster = comPosnetIngresosMaster + comPosnetBoleteriaMaster + comPosnetBarraMaster;
+
   const att = tabs["BOLETERIA"].reduce((s, r) => s + parseNum(r["CANTIDAD"] || ""), 0);
   const vS = {};
   tabs["COMISIONES"].forEach(r => {
@@ -308,9 +330,12 @@ export async function fetchEvento(sheetId, fecha, nombre, estado) {
   });
   const t = nombre.toLowerCase().includes("viernes") ? "viernes"
     : nombre.toLowerCase().includes("master") ? "master" : "sabado";
+
   return {
     id: sheetId, t, d: fecha, nombre, estado, att,
-    rM: findMonto("mesa"), rP: findMonto("boleter") || findMonto("puerta"), rB: findMonto("barra"),
+    rM,
+    rP: findMonto("boleter") || findMonto("puerta"),
+    rB: findMonto("barra"),
     costs: [0,0,0, findMonto("personal"), findMonto("cmv")||findMonto("bebida"), 0,0,0, findMonto("comision"), findMonto("extra")],
     vS,
     posnet: { ingresos: comPosnetIngresos, boleteria: comPosnetBoleteria, barra: comPosnetBarra, total: totalComPosnet },
