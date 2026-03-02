@@ -27,7 +27,6 @@ async function fetchTab(sheetId, tabName) {
   const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
   return data;
 }
-/* ── Intentar leer una hoja, devuelve [] si no existe ── */
 async function tryFetchTab(sheetId, tabName) {
   try { return await fetchTab(sheetId, tabName); }
   catch(e) { return []; }
@@ -141,8 +140,10 @@ function parseComisiones(rows) {
     };
   }).filter(r => r.vendedor);
 }
+
 /* ═══════════════════════════════════════════════════════════
-   PARSE RESUMEN — con tracking de secciones y Comisiones Posnet
+   PARSE RESUMEN — FIX: detecta "lado a" e "ingresos previos"
+   como sección de ingresos y como valor de mesas
    ═══════════════════════════════════════════════════════════ */
 function parseResumen(rows) {
   const res = {};
@@ -153,8 +154,13 @@ function parseResumen(rows) {
     const rawConcepto = (r[keys[0]] || "").trim();
     const concepto = rawConcepto.toLowerCase();
     const valor = parseNum(r[keys[1]] || r[keys[2]]);
+
     /* ── Detectar sección actual ── */
     if (concepto.includes("ingreso") && !concepto.includes("total") && !concepto.includes("sub") && !concepto.includes("comision") && !concepto.includes("neto")) {
+      seccion = "ingresos";
+    }
+    // FIX: "lado a" e "ingresos previos" son sección ingresos
+    if ((concepto.includes("lado a") || concepto.includes("ingresos previos")) && !concepto.includes("comision")) {
       seccion = "ingresos";
     }
     if ((concepto.includes("boleter") || concepto.includes("puerta")) && !concepto.includes("comision") && !concepto.includes("sub") && !concepto.includes("total")) {
@@ -166,8 +172,12 @@ function parseResumen(rows) {
     if (concepto.includes("costo") || concepto.includes("egreso")) {
       seccion = "costos";
     }
+
     /* ── Valores estándar ── */
-    if (concepto.includes("mesa") && !concepto.includes("comision")) res.mesas = valor;
+    // FIX: detectar "mesa", "lado a" e "ingresos lado" como ingresos de mesas/previos
+    if ((concepto.includes("mesa") || concepto.includes("lado a") || concepto.includes("ingresos lado")) && !concepto.includes("comision") && !concepto.includes("sub") && !concepto.includes("total")) {
+      res.mesas = valor;
+    }
     else if (concepto.includes("ticket") || concepto.includes("entrada")) res.tickets = valor;
     else if ((concepto.includes("efectivo") || concepto.includes("cash")) && !concepto.includes("comision")) {
       if (seccion === "boleteria") res.efectivoBoleteria = valor;
@@ -183,12 +193,18 @@ function parseResumen(rows) {
     else if ((concepto.includes("ingreso") && concepto.includes("total")) || concepto.includes("total ing")) res.totalIng = valor;
     else if ((concepto.includes("costo") || concepto.includes("gasto")) && !concepto.includes("comision")) res.totalCost = valor;
     else if (concepto.includes("utilidad") || concepto.includes("resultado")) res.utilidad = valor;
+
     /* ── Sub-totales por sección ── */
     if (concepto.includes("sub") && concepto.includes("total")) {
       if (seccion === "ingresos") res.subtotalIngresos = valor;
       else if (seccion === "boleteria") res.subtotalBoleteria = valor;
       else if (seccion === "barra") res.subtotalBarra = valor;
     }
+    // FIX: también detectar "subtotal ingresos previos" explícitamente
+    if (concepto.includes("subtotal") && (concepto.includes("ingreso") || concepto.includes("previo"))) {
+      res.subtotalIngresos = valor;
+    }
+
     /* ══ COMISIONES POSNET ══ */
     if (concepto.includes("comision") && (concepto.includes("posnet") || concepto.includes("pos"))) {
       if (concepto.includes("ingreso") || concepto.includes("mesa")) {
@@ -213,6 +229,7 @@ function parseResumen(rows) {
   res.totalComPosnet = (res.comPosnetIngresos || 0) + (res.comPosnetBoleteria || 0) + (res.comPosnetBarra || 0);
   return res;
 }
+
 function parseBoleteria(rows) {
   return rows.map(r => {
     const keys = Object.keys(r);
@@ -354,18 +371,16 @@ export default function EventoLive() {
       setLoadingIndex(false);
     }
   }, [selectedEvento]);
+
   /* ═══════════════════════════════════════════════════════
      LOAD EVENT DATA
-     Prioridad para resumen principal:
-       1. HOJA FINAL (tiene Sabado + Master combinado)
-       2. RESUMEN (evento normal sin Master)
-       3. RESUMEN LADO A (si solo existe esta)
+     Prioridad: HOJA FINAL > RESUMEN > RESUMEN LADO A
+     FIX: parseResumen ahora detecta "lado a" correctamente
      ═══════════════════════════════════════════════════════ */
   const loadEventData = useCallback(async (sheetId) => {
     if (!sheetId) return;
     setLoading(true);
     try {
-      /* ── Cargar tabs estándar ── */
       const tabNames = ["MESAS","PERSONAL","EXTRAS","COMISIONES","BOLETERIA"];
       const results = {};
       await Promise.all(tabNames.map(async t => {
@@ -377,14 +392,12 @@ export default function EventoLive() {
       let resumenRows = [];
       let source = "";
 
-      // 1. Intentar HOJA FINAL primero (consolidado Sabado + Master)
       const hojaFinal = await tryFetchTab(sheetId, "HOJA FINAL");
       if (hojaFinal.length > 0) {
         resumenRows = hojaFinal;
         source = "HOJA FINAL";
       }
 
-      // 2. Si no hay HOJA FINAL, intentar RESUMEN
       if (resumenRows.length === 0) {
         const resumen = await tryFetchTab(sheetId, "RESUMEN");
         if (resumen.length > 0) {
@@ -393,7 +406,6 @@ export default function EventoLive() {
         }
       }
 
-      // 3. Si tampoco hay RESUMEN, intentar RESUMEN LADO A
       if (resumenRows.length === 0) {
         const ladoA = await tryFetchTab(sheetId, "RESUMEN LADO A");
         if (ladoA.length > 0) {
@@ -406,13 +418,30 @@ export default function EventoLive() {
       const resumenMaster = await tryFetchTab(sheetId, "RESUMEN MASTER");
       const resumenLadoA = source !== "RESUMEN LADO A"
         ? await tryFetchTab(sheetId, "RESUMEN LADO A")
-        : []; // Ya lo leímos arriba
+        : [];
 
       console.log("📊 Resumen leído de:", source, "| Filas:", resumenRows.length,
         "| Master:", resumenMaster.length > 0 ? "SI" : "NO");
 
+      // FIX: si parseResumen no encontró mesas desde HOJA FINAL,
+      // intentar completar con RESUMEN LADO A
+      let parsedResumen = resumenRows.length > 0 ? parseResumen(resumenRows) : SEED.resumen;
+
+      if (!parsedResumen.mesas && resumenLadoA.length > 0) {
+        const parsedLadoA = parseResumen(resumenLadoA);
+        if (parsedLadoA.mesas) {
+          parsedResumen.mesas = parsedLadoA.mesas;
+          parsedResumen.subtotalIngresos = parsedLadoA.subtotalIngresos || parsedResumen.subtotalIngresos;
+          parsedResumen.comPosnetIngresos = parsedLadoA.comPosnetIngresos || parsedResumen.comPosnetIngresos;
+          parsedResumen.totalComPosnet = (parsedResumen.comPosnetIngresos || 0)
+            + (parsedResumen.comPosnetBoleteria || 0)
+            + (parsedResumen.comPosnetBarra || 0);
+          console.log("📊 FIX: mesas completadas desde RESUMEN LADO A:", parsedResumen.mesas);
+        }
+      }
+
       const newData = {
-        resumen: resumenRows.length > 0 ? parseResumen(resumenRows) : SEED.resumen,
+        resumen: parsedResumen,
         resumenMaster: resumenMaster.length > 0 ? parseResumen(resumenMaster) : null,
         resumenLadoA: (source !== "RESUMEN LADO A" && resumenLadoA.length > 0)
           ? parseResumen(resumenLadoA) : null,
@@ -423,7 +452,7 @@ export default function EventoLive() {
         boleteria: results.BOLETERIA?.length ? parseBoleteria(results.BOLETERIA) : SEED.boleteria
       };
       setData(newData);
-      setResumenSource(source);
+      setResumenSource(source + (resumenMaster.length > 0 ? " + RESUMEN MASTER" : ""));
       setIsLive(true);
       setLastUpdate(new Date());
     } catch(e) {
@@ -432,6 +461,7 @@ export default function EventoLive() {
       setLoading(false);
     }
   }, []);
+
   /* ─── EFFECTS ─── */
   useEffect(() => {
     if (INDEX_ID) loadIndex();
@@ -443,6 +473,7 @@ export default function EventoLive() {
       return () => clearInterval(iv);
     }
   }, [selectedEvento, loadEventData]);
+
   /* ─── DERIVED CALCS ─── */
   const totalPersonal = data.personal.reduce((s,r) => s + (r.total || r.qty * r.unit), 0);
   const totalExtras = data.extras.reduce((s,r) => s + r.monto, 0);
@@ -470,6 +501,7 @@ export default function EventoLive() {
   const comPosnetBoleteriaMaster = resMaster?.comPosnetBoleteria || 0;
   const comPosnetBarraMaster = resMaster?.comPosnetBarra || 0;
   const totalComPosnetMaster = comPosnetIngresosMaster + comPosnetBoleteriaMaster + comPosnetBarraMaster;
+
   /* ─── STYLES ─── */
   const card = { background: C.s1, borderRadius: 12, border: "1px solid " + C.bd, padding: 20, marginBottom: 12 };
   const grid2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
@@ -497,9 +529,6 @@ export default function EventoLive() {
       <div style={{ height: 4, background: color, borderRadius: 2, width: Math.min(p * 100, 100) + "%", transition: "width 0.5s" }} />
     </div>
   );
-  /* ══════════════════════════════════════════════════
-     COMISIONES POSNET CARD — componente reutilizable
-     ══════════════════════════════════════════════════ */
   const PosnetCard = ({ titulo, posnetIng, posnetBol, posnetBar, totalPosnet }) => {
     if (!posnetIng && !posnetBol && !posnetBar) return null;
     return (
@@ -528,9 +557,6 @@ export default function EventoLive() {
       </div>
     );
   };
-  /* ══════════════════════════════ */
-  /*   EVENT SELECTOR COMPONENT    */
-  /* ══════════════════════════════ */
   const EventSelector = () => {
     if (!INDEX_ID) return null;
     if (loadingIndex) return (
@@ -540,37 +566,27 @@ export default function EventoLive() {
     );
     if (eventos.length === 0) return (
       <div style={{ ...card, padding: "12px 16px" }}>
-        <div style={{ fontSize: 13, color: C.t2 }}>No hay eventos en el indice. Agrega filas en la hoja INDICE.</div>
+        <div style={{ fontSize: 13, color: C.t2 }}>No hay eventos en el indice.</div>
       </div>
     );
     return (
-      <div style={{
-        display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center"
-      }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontSize: 11, color: C.t2, fontFamily: C.mono, marginRight: 4 }}>EVENTO:</div>
         {eventos.map((ev, i) => {
           const isActive = selectedEvento?.sheetId === ev.sheetId;
           const isEnVivo = ev.estado === "EN VIVO" || ev.estado === "ABIERTO" || ev.estado === "LIVE";
           return (
-            <button
-              key={i}
-              onClick={() => { setSelectedEvento(ev); setIsLive(false); }}
+            <button key={i} onClick={() => { setSelectedEvento(ev); setIsLive(false); }}
               style={{
                 padding: "6px 14px", borderRadius: 20, fontSize: 12, fontFamily: C.mono,
                 cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
                 border: isActive ? "1px solid " + C.o + "88" : "1px solid " + C.bd,
                 background: isActive ? C.o + "18" : C.s2,
-                color: isActive ? C.o : C.t2,
-                transition: "all 0.2s"
-              }}
-            >
+                color: isActive ? C.o : C.t2, transition: "all 0.2s"
+              }}>
               {isEnVivo && (
-                <span style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: C.g, display: "inline-block",
-                  boxShadow: "0 0 6px " + C.g + "88",
-                  animation: "pulse 2s infinite"
-                }} />
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.g,
+                  display: "inline-block", boxShadow: "0 0 6px " + C.g + "88", animation: "pulse 2s infinite" }} />
               )}
               <span>{ev.nombre || ev.fecha}</span>
               {ev.fecha && ev.nombre && (
@@ -583,9 +599,7 @@ export default function EventoLive() {
       </div>
     );
   };
-  /* ══════════════════════════════ */
-  /*       TAB: RESUMEN            */
-  /* ══════════════════════════════ */
+
   const TabResumen = () => (
     <div>
       <div style={grid4}>
@@ -595,13 +609,11 @@ export default function EventoLive() {
         <KPI label="Utilidad neta" value={fmt(utilidad)} color={utilidad >= 0 ? C.g : C.r} />
         <KPI label="Margen" value={pct(margen)} color={margen > 0.4 ? C.g : margen > 0.2 ? C.y : C.r} />
       </div>
-      {/* ── Indicador de fuente de datos ── */}
       {resumenSource && (
         <div style={{ fontSize: 10, color: C.t2, fontFamily: C.mono, marginBottom: 8, textAlign: "right" }}>
-          Datos de: {resumenSource} {resMaster ? " + RESUMEN MASTER" : ""}
+          Datos de: {resumenSource}
         </div>
       )}
-      {/* ── INGRESOS PREVIOS (Mesas + Tickets + Posnet 2.5%) ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.b }}>
           Ingresos Previos {resMaster ? "(Sabado)" : ""}
@@ -627,7 +639,6 @@ export default function EventoLive() {
           </div>
         )}
       </div>
-      {/* ── DESGLOSE GENERAL ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
           Desglose general {resMaster ? "(Sabado)" : ""}
@@ -658,7 +669,6 @@ export default function EventoLive() {
           <div></div>
         </div>
       </div>
-      {/* ── BOLETERIA con Posnet ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.p }}>
           Boleteria {resMaster ? "(Sabado)" : ""}
@@ -684,7 +694,6 @@ export default function EventoLive() {
           </div>
         )}
       </div>
-      {/* ── BARRA con Posnet ── */}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.v }}>
           Barra MP {resMaster ? "(Sabado)" : ""}
@@ -710,21 +719,15 @@ export default function EventoLive() {
           </div>
         )}
       </div>
-      {/* ── COMISIONES POSNET RESUMEN ── */}
       <PosnetCard
         titulo={resMaster ? "Comisiones Posnet (Sabado)" : "Comisiones Posnet"}
-        posnetIng={comPosnetIngresos}
-        posnetBol={comPosnetBoleteria}
-        posnetBar={comPosnetBarra}
-        totalPosnet={totalComPosnet}
+        posnetIng={comPosnetIngresos} posnetBol={comPosnetBoleteria}
+        posnetBar={comPosnetBarra} totalPosnet={totalComPosnet}
       />
-      {/* ══ RESUMEN MASTER (si existe) ══ */}
       {resMaster && (
         <>
           <div style={{ ...card, marginTop: 16, border: "1px solid " + C.v + "44" }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: C.v }}>
-              MASTER
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: C.v }}>MASTER</div>
             <div style={grid3}>
               <div>
                 <div style={label}>Mesas Master</div>
@@ -744,52 +747,27 @@ export default function EventoLive() {
                 <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(resMaster.totalIng || 0)}</div>
               </div>
             </div>
-            {/* Boleteria Master */}
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.p, marginBottom: 8 }}>Boleteria Master</div>
               <div style={grid3}>
-                <div>
-                  <div style={label}>Efectivo</div>
-                  <div style={{ ...val, fontSize: 16, color: C.g }}>{fmt(resMaster.efectivoBoleteria || 0)}</div>
-                </div>
-                <div>
-                  <div style={label}>MP / Posnet</div>
-                  <div style={{ ...val, fontSize: 16, color: C.b }}>{fmt(resMaster.mpBoleteria || 0)}</div>
-                </div>
-                <div>
-                  <div style={label}>Comision Posnet 5%</div>
-                  <div style={{ ...val, fontSize: 16, color: C.o }}>{comPosnetBoleteriaMaster > 0 ? "-" : ""}{fmt(comPosnetBoleteriaMaster)}</div>
-                </div>
+                <div><div style={label}>Efectivo</div><div style={{ ...val, fontSize: 16, color: C.g }}>{fmt(resMaster.efectivoBoleteria || 0)}</div></div>
+                <div><div style={label}>MP / Posnet</div><div style={{ ...val, fontSize: 16, color: C.b }}>{fmt(resMaster.mpBoleteria || 0)}</div></div>
+                <div><div style={label}>Comision Posnet 5%</div><div style={{ ...val, fontSize: 16, color: C.o }}>{comPosnetBoleteriaMaster > 0 ? "-" : ""}{fmt(comPosnetBoleteriaMaster)}</div></div>
               </div>
             </div>
-            {/* Barra Master */}
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.v, marginBottom: 8 }}>Barra Master</div>
               <div style={grid3}>
-                <div>
-                  <div style={label}>Efectivo</div>
-                  <div style={{ ...val, fontSize: 16, color: C.g }}>{fmt(resMaster.efectivoBarra || 0)}</div>
-                </div>
-                <div>
-                  <div style={label}>MP / Posnet</div>
-                  <div style={{ ...val, fontSize: 16, color: C.b }}>{fmt(resMaster.mpBarra || 0)}</div>
-                </div>
-                <div>
-                  <div style={label}>Comision Posnet 5%</div>
-                  <div style={{ ...val, fontSize: 16, color: C.o }}>{comPosnetBarraMaster > 0 ? "-" : ""}{fmt(comPosnetBarraMaster)}</div>
-                </div>
+                <div><div style={label}>Efectivo</div><div style={{ ...val, fontSize: 16, color: C.g }}>{fmt(resMaster.efectivoBarra || 0)}</div></div>
+                <div><div style={label}>MP / Posnet</div><div style={{ ...val, fontSize: 16, color: C.b }}>{fmt(resMaster.mpBarra || 0)}</div></div>
+                <div><div style={label}>Comision Posnet 5%</div><div style={{ ...val, fontSize: 16, color: C.o }}>{comPosnetBarraMaster > 0 ? "-" : ""}{fmt(comPosnetBarraMaster)}</div></div>
               </div>
             </div>
           </div>
-          {/* Posnet Master */}
-          <PosnetCard
-            titulo="Comisiones Posnet (Master)"
-            posnetIng={comPosnetIngresosMaster}
-            posnetBol={comPosnetBoleteriaMaster}
-            posnetBar={comPosnetBarraMaster}
-            totalPosnet={totalComPosnetMaster}
+          <PosnetCard titulo="Comisiones Posnet (Master)"
+            posnetIng={comPosnetIngresosMaster} posnetBol={comPosnetBoleteriaMaster}
+            posnetBar={comPosnetBarraMaster} totalPosnet={totalComPosnetMaster}
           />
-          {/* TOTAL GENERAL POSNET */}
           <div style={{ ...card, marginTop: 8, background: C.s2, border: "1px solid " + C.o + "55" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: C.o, fontFamily: C.mono }}>TOTAL POSNET SAB + MASTER</span>
@@ -798,11 +776,8 @@ export default function EventoLive() {
           </div>
         </>
       )}
-      {/* ── DESGLOSE COSTOS ── */}
       <div style={{ ...card, marginTop: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
-          Desglose de costos
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>Desglose de costos</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
           <div>
             <div style={label}>Personal</div>
@@ -838,24 +813,12 @@ export default function EventoLive() {
           </div>
         </div>
       </div>
-      {/* ── COBROS ── */}
       <div style={{ ...card, marginTop: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>
-          Cobros - Senas y tickets
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.w }}>Cobros - Senas y tickets</div>
         <div style={grid3}>
-          <div>
-            <div style={label}>Total comprometido</div>
-            <div style={{ ...val, fontSize: 18, color: C.w }}>{fmt(totalMesas)}</div>
-          </div>
-          <div>
-            <div style={label}>Cobrado</div>
-            <div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(totalAbonado)}</div>
-          </div>
-          <div>
-            <div style={label}>Pendiente</div>
-            <div style={{ ...val, fontSize: 18, color: totalPendiente > 0 ? C.r : C.g }}>{fmt(totalPendiente)}</div>
-          </div>
+          <div><div style={label}>Total comprometido</div><div style={{ ...val, fontSize: 18, color: C.w }}>{fmt(totalMesas)}</div></div>
+          <div><div style={label}>Cobrado</div><div style={{ ...val, fontSize: 18, color: C.g }}>{fmt(totalAbonado)}</div></div>
+          <div><div style={label}>Pendiente</div><div style={{ ...val, fontSize: 18, color: totalPendiente > 0 ? C.r : C.g }}>{fmt(totalPendiente)}</div></div>
         </div>
         <Bar pct={totalMesas > 0 ? totalAbonado / totalMesas : 0} color={C.g} />
         <div style={{ fontSize: 10, color: C.t2, marginTop: 4, fontFamily: C.mono }}>
@@ -864,9 +827,7 @@ export default function EventoLive() {
       </div>
     </div>
   );
-  /* ══════════════════════════════ */
-  /*       TAB: MESAS              */
-  /* ══════════════════════════════ */
+
   const TabMesas = () => {
     const sectors = [...new Set(data.mesas.map(m => m.sector))];
     return (
@@ -896,11 +857,7 @@ export default function EventoLive() {
         <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>
-                {["Mesa","Sector","Titular","RRPP","Importe","Abonado","Pendiente","Consumo"].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
+              <tr>{["Mesa","Sector","Titular","RRPP","Importe","Abonado","Pendiente","Consumo"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {data.mesas.map((m, i) => (
@@ -930,9 +887,7 @@ export default function EventoLive() {
       </div>
     );
   };
-  /* ══════════════════════════════ */
-  /*       TAB: COSTOS             */
-  /* ══════════════════════════════ */
+
   const TabCostos = () => (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
@@ -941,7 +896,6 @@ export default function EventoLive() {
         <KPI label="Com. Posnet" value={fmt(totalComPosnet + totalComPosnetMaster)} color={C.o} sub="Ing 2.5% + Bol/Bar 5%" />
         <KPI label="Total costos" value={fmt(totalCostosConPosnet)} color={C.r} />
       </div>
-      {/* Posnet detail in costos */}
       {(totalComPosnet > 0 || totalComPosnetMaster > 0) && (
         <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
           <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.o, borderBottom: "1px solid " + C.bd }}>
@@ -949,11 +903,7 @@ export default function EventoLive() {
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>
-                {["Seccion","Tasa","Sabado","Master","Total"].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
+              <tr>{["Seccion","Tasa","Sabado","Master","Total"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
             </thead>
             <tbody>
               <tr style={{ background: C.s2 + "44" }}>
@@ -990,17 +940,9 @@ export default function EventoLive() {
         </div>
       )}
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
-        <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>
-          Personal
-        </div>
+        <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>Personal</div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              {["Rol / Puesto","Cant","Costo unit.","Subtotal"].map(h => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
+          <thead><tr>{["Rol / Puesto","Cant","Costo unit.","Subtotal"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
           <tbody>
             {data.personal.map((r, i) => (
               <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : C.s2 + "44" }}>
@@ -1020,17 +962,9 @@ export default function EventoLive() {
         </table>
       </div>
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
-        <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>
-          Gastos extra
-        </div>
+        <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, color: C.w, borderBottom: "1px solid " + C.bd }}>Gastos extra</div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              {["Concepto","Monto"].map(h => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
+          <thead><tr>{["Concepto","Monto"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
           <tbody>
             {data.extras.map((r, i) => (
               <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : C.s2 + "44" }}>
@@ -1049,9 +983,7 @@ export default function EventoLive() {
       </div>
     </div>
   );
-  /* ══════════════════════════════ */
-  /*       TAB: COMISIONES         */
-  /* ══════════════════════════════ */
+
   const TabComisiones = () => {
     const topV = data.comisiones.length > 0
       ? data.comisiones.reduce((a, b) => a.ventas > b.ventas ? a : b) : null;
@@ -1065,13 +997,7 @@ export default function EventoLive() {
         </div>
         <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["Vendedor / RRPP","Ventas","Tasa","Comision","% del total"].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+            <thead><tr>{["Vendedor / RRPP","Ventas","Tasa","Comision","% del total"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
             <tbody>
               {data.comisiones.map((r, i) => {
                 const com = r.comision || r.ventas * r.rate;
@@ -1081,9 +1007,7 @@ export default function EventoLive() {
                     <td style={tdStyle}>{fmt(r.ventas)}</td>
                     <td style={{ ...tdStyle, color: C.t2 }}>{pct(r.rate)}</td>
                     <td style={{ ...tdStyle, fontWeight: 600, color: C.y }}>{fmt(com)}</td>
-                    <td style={{ ...tdStyle, color: C.t2 }}>
-                      {totalComisiones > 0 ? pct(com / totalComisiones) : "0%"}
-                    </td>
+                    <td style={{ ...tdStyle, color: C.t2 }}>{totalComisiones > 0 ? pct(com / totalComisiones) : "0%"}</td>
                   </tr>
                 );
               })}
@@ -1091,9 +1015,7 @@ export default function EventoLive() {
             <tfoot>
               <tr style={{ background: C.s3 }}>
                 <td style={{ ...tdStyle, fontWeight: 700, color: C.w }}>TOTAL</td>
-                <td style={{ ...tdStyle, fontWeight: 700 }}>
-                  {fmt(data.comisiones.reduce((s, r) => s + r.ventas, 0))}
-                </td>
+                <td style={{ ...tdStyle, fontWeight: 700 }}>{fmt(data.comisiones.reduce((s, r) => s + r.ventas, 0))}</td>
                 <td style={tdStyle}></td>
                 <td style={{ ...tdStyle, fontWeight: 700, color: C.y }}>{fmt(totalComisiones)}</td>
                 <td style={tdStyle}></td>
@@ -1112,11 +1034,7 @@ export default function EventoLive() {
                   <span style={{ color: C.y }}>{fmt(r.ventas)}</span>
                 </div>
                 <div style={{ height: 6, background: C.s3, borderRadius: 3 }}>
-                  <div style={{
-                    height: 6, borderRadius: 3, background: C.y,
-                    width: (maxV > 0 ? (r.ventas / maxV) * 100 : 0) + "%",
-                    transition: "width 0.5s"
-                  }} />
+                  <div style={{ height: 6, borderRadius: 3, background: C.y, width: (maxV > 0 ? (r.ventas / maxV) * 100 : 0) + "%", transition: "width 0.5s" }} />
                 </div>
               </div>
             );
@@ -1125,9 +1043,7 @@ export default function EventoLive() {
       </div>
     );
   };
-  /* ══════════════════════════════ */
-  /*       TAB: BOLETERIA          */
-  /* ══════════════════════════════ */
+
   const TabBoleteria = () => (
     <div>
       <div style={grid4}>
@@ -1138,13 +1054,7 @@ export default function EventoLive() {
       </div>
       <div style={{ ...card, marginTop: 8, padding: 0, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              {["Tipo entrada","Cantidad","Precio unit.","Subtotal","% del total"].map(h => (
-                <th key={h} style={thStyle}>{h}</th>
-              ))}
-            </tr>
-          </thead>
+          <thead><tr>{["Tipo entrada","Cantidad","Precio unit.","Subtotal","% del total"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
           <tbody>
             {data.boleteria.map((r, i) => (
               <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : C.s2 + "44" }}>
@@ -1152,9 +1062,7 @@ export default function EventoLive() {
                 <td style={{ ...tdStyle, textAlign: "center" }}>{r.qty}</td>
                 <td style={tdStyle}>{fmt(r.precio)}</td>
                 <td style={{ ...tdStyle, fontWeight: 600, color: C.p }}>{fmt(r.total)}</td>
-                <td style={{ ...tdStyle, color: C.t2 }}>
-                  {totalBoleteria > 0 ? pct(r.total / totalBoleteria) : "0%"}
-                </td>
+                <td style={{ ...tdStyle, color: C.t2 }}>{totalBoleteria > 0 ? pct(r.total / totalBoleteria) : "0%"}</td>
               </tr>
             ))}
           </tbody>
@@ -1178,88 +1086,57 @@ export default function EventoLive() {
               <span style={{ color: C.p }}>{r.qty} entradas</span>
             </div>
             <div style={{ height: 6, background: C.s3, borderRadius: 3 }}>
-              <div style={{
-                height: 6, borderRadius: 3, background: C.p,
-                width: (totalEntradas > 0 ? (r.qty / totalEntradas) * 100 : 0) + "%"
-              }} />
+              <div style={{ height: 6, borderRadius: 3, background: C.p, width: (totalEntradas > 0 ? (r.qty / totalEntradas) * 100 : 0) + "%" }} />
             </div>
           </div>
         ))}
       </div>
     </div>
   );
-  /* ══════════════════════════════ */
-  /*       RENDER                  */
-  /* ══════════════════════════════ */
+
   return (
     <div style={{ padding: 20, maxWidth: 1200, margin: "0 auto" }}>
-      {/* MODO DEMO banner */}
       {!INDEX_ID && (
-        <div style={{
-          background: C.o + "15", border: "1px solid " + C.o + "44", borderRadius: 10,
-          padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10
-        }}>
+        <div style={{ background: C.o + "15", border: "1px solid " + C.o + "44", borderRadius: 10,
+          padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 18 }}>*</span>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: C.o }}>MODO DEMO</div>
-            <div style={{ fontSize: 11, color: C.t2 }}>
-              Datos de ejemplo (Sabado 13/12). Conecta el Sheet INDICE para ver eventos reales.
-            </div>
+            <div style={{ fontSize: 11, color: C.t2 }}>Datos de ejemplo. Conecta el Sheet INDICE para ver eventos reales.</div>
           </div>
         </div>
       )}
-      {/* HEADER */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.w, fontFamily: C.sans }}>
-            Evento Live
-          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.w, fontFamily: C.sans }}>Evento Live</div>
           <div style={{ fontSize: 12, color: C.t2, fontFamily: C.mono, marginTop: 2 }}>
-            {isLive && selectedEvento
-              ? (selectedEvento.nombre || selectedEvento.fecha)
-              : "Sabado 13/12 - Datos demo"}
+            {isLive && selectedEvento ? (selectedEvento.nombre || selectedEvento.fecha) : "Sabado 13/12 - Datos demo"}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {lastUpdate && (
-            <div style={{ fontSize: 10, color: C.t2, fontFamily: C.mono }}>
-              {lastUpdate.toLocaleTimeString("es-AR")}
-            </div>
-          )}
-          <div style={{
-            padding: "4px 12px", borderRadius: 20, fontSize: 11, fontFamily: C.mono, fontWeight: 600,
+          {lastUpdate && <div style={{ fontSize: 10, color: C.t2, fontFamily: C.mono }}>{lastUpdate.toLocaleTimeString("es-AR")}</div>}
+          <div style={{ padding: "4px 12px", borderRadius: 20, fontSize: 11, fontFamily: C.mono, fontWeight: 600,
             background: loading ? C.y + "20" : isLive ? C.g + "20" : C.t2 + "20",
             color: loading ? C.y : isLive ? C.g : C.t2,
-            border: "1px solid " + (loading ? C.y + "44" : isLive ? C.g + "44" : C.t2 + "44")
-          }}>
+            border: "1px solid " + (loading ? C.y + "44" : isLive ? C.g + "44" : C.t2 + "44") }}>
             {loading ? "CARGANDO..." : isLive
               ? (selectedEvento?.estado === "EN VIVO" || selectedEvento?.estado === "ABIERTO" ? "EN VIVO" : "CERRADO")
               : "DEMO"}
           </div>
         </div>
       </div>
-      {/* EVENT SELECTOR */}
       <EventSelector />
-      {/* TAB NAV */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
         {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{
-              padding: "8px 18px", borderRadius: 20, fontSize: 12, fontFamily: C.mono,
-              cursor: "pointer",
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "8px 18px", borderRadius: 20, fontSize: 12, fontFamily: C.mono, cursor: "pointer",
               border: tab === t.id ? "1px solid " + t.color + "66" : "1px solid transparent",
               background: tab === t.id ? t.color + "18" : "transparent",
-              color: tab === t.id ? t.color : C.t2,
-              transition: "all 0.2s"
-            }}
-          >
+              color: tab === t.id ? t.color : C.t2, transition: "all 0.2s" }}>
             {t.label}
           </button>
         ))}
       </div>
-      {/* CONTENT */}
       {tab === "resumen" && <TabResumen />}
       {tab === "mesas" && <TabMesas />}
       {tab === "costos" && <TabCostos />}
