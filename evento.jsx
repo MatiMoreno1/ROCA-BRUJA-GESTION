@@ -20,35 +20,55 @@ const INDEX_ID = import.meta.env.VITE_SHEET_INDEX || "";
 const BASE = "https://docs.google.com/spreadsheets/d";
 const REFRESH_MS = 60000;
 async function fetchTab(sheetId, tabName) {
-  const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
-  const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
-  return data;
+  const jsonStr = text.replace(/^[^{]*/, "").replace(/\);?\s*$/, "");
+  const json = JSON.parse(jsonStr);
+  const table = json?.table;
+  if (!table || !table.cols || !table.rows) return [];
+  const headers = table.cols.map((c, i) => (c.label || c.id || `col_${i}`).trim());
+  return table.rows.map(row => {
+    const obj = {};
+    headers.forEach((h, i) => {
+      const cell = row.c?.[i];
+      obj[h] = cell == null ? "" : (cell.v ?? cell.f ?? "");
+    });
+    return obj;
+  });
 }
 async function tryFetchTab(sheetId, tabName) {
   try {
-    const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+    // Usar endpoint JSON para obtener valores numéricos reales sin problemas de formato
+    const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const text = await res.text();
     if (!text || text.trim() === "") return [];
-    // Usar headerless + tomar primera fila como header manualmente
-    // para evitar que Papa Parse renombre columnas duplicadas
-    const lines = text.split("\n").filter(l => l.trim());
-    if (lines.length < 2) return [];
-    const { data: rawData } = Papa.parse(text, { header: false, skipEmptyLines: true });
-    const headers = rawData[0].map((h, i) => {
-      const clean = String(h || "").trim().replace(/^"|"$/g, "");
-      return clean || `col_${i}`;
-    });
-    return rawData.slice(1).map(row => {
+    // Google devuelve: google.visualization.Query.setResponse({...})
+    const jsonStr = text.replace(/^[^{]*/, "").replace(/\);?\s*$/, "");
+    const json = JSON.parse(jsonStr);
+    const table = json?.table;
+    if (!table || !table.cols || !table.rows) return [];
+    // Construir headers desde cols[].label
+    const headers = table.cols.map((c, i) => (c.label || c.id || `col_${i}`).trim());
+    // Construir rows usando el valor numérico real (v) no el formateado (f)
+    return table.rows.map(row => {
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = row[i] ?? ""; });
+      headers.forEach((h, i) => {
+        const cell = row.c?.[i];
+        if (cell == null) { obj[h] = ""; return; }
+        // Preferir valor numérico real, sino formateado, sino vacío
+        obj[h] = cell.v ?? cell.f ?? "";
+      });
       return obj;
     });
-  } catch(e) { return []; }
+  } catch(e) {
+    // Fallback a CSV si JSON falla
+    try { return await fetchTab(sheetId, tabName); }
+    catch { return []; }
+  }
 }
 function parseNum(v) {
   if (v == null) return 0;
