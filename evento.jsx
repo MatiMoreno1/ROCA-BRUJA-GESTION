@@ -28,21 +28,65 @@ async function fetchTab(sheetId, tabName) {
   return data;
 }
 async function tryFetchTab(sheetId, tabName) {
-  try { return await fetchTab(sheetId, tabName); }
-  catch(e) { return []; }
+  try {
+    const url = `${BASE}/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const text = await res.text();
+    if (!text || text.trim() === "") return [];
+    // Usar headerless + tomar primera fila como header manualmente
+    // para evitar que Papa Parse renombre columnas duplicadas
+    const lines = text.split("\n").filter(l => l.trim());
+    if (lines.length < 2) return [];
+    const { data: rawData } = Papa.parse(text, { header: false, skipEmptyLines: true });
+    const headers = rawData[0].map((h, i) => {
+      const clean = String(h || "").trim().replace(/^"|"$/g, "");
+      return clean || `col_${i}`;
+    });
+    return rawData.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = row[i] ?? ""; });
+      return obj;
+    });
+  } catch(e) { return []; }
 }
 function parseNum(v) {
   if (v == null) return 0;
   if (typeof v === "number") return v;
   let s = String(v).trim();
+  // Quitar $ y espacios
   s = s.replace(/^\$/, "").replace(/\s/g, "");
   if (s === "" || s === "-") return 0;
-  if (s.includes(",")) {
+
+  const hasComma = s.includes(",");
+  const dotCount = (s.match(/\./g) || []).length;
+
+  if (hasComma && dotCount >= 1) {
+    // Formato europeo/AR: 1.234.567,89 → quitar puntos, coma a punto
     s = s.replace(/\./g, "").replace(",", ".");
-  } else {
-    const dots = (s.match(/\./g) || []).length;
-    if (dots > 1) s = s.replace(/\./g, "");
+  } else if (hasComma && dotCount === 0) {
+    // Solo coma: puede ser decimal (1,5) o miles (1,500)
+    const afterComma = s.split(",")[1] || "";
+    if (afterComma.length === 3) {
+      // 1,500 → miles → quitar coma
+      s = s.replace(",", "");
+    } else {
+      // 1,5 → decimal → coma a punto
+      s = s.replace(",", ".");
+    }
+  } else if (dotCount > 1) {
+    // Múltiples puntos: 1.234.567 → separadores de miles
+    s = s.replace(/\./g, "");
+  } else if (dotCount === 1) {
+    // Un solo punto: distinguir decimal vs miles
+    const afterDot = s.split(".")[1] || "";
+    if (afterDot.length === 3) {
+      // 4.205 o 1.000 → separador de miles (formato AR)
+      s = s.replace(".", "");
+    }
+    // Si afterDot.length !== 3 → decimal normal (1.5, 3.14)
   }
+
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
@@ -76,17 +120,29 @@ function parseMesas(rows) {
       }
       return "";
     };
+    // Estructura real: SECTOR | TITULAR | PUBLICA | IMPORTE | ABONADO | PENDIENTE | CONSUMO 70% | CONSUMO 100%
+    const sector = get(["sector"]) || "";
+    const titular = get(["titular", "nombre"]) || "";
+    // Ignorar fila de totales
+    if (titular.toLowerCase().includes("total") || sector.toLowerCase().includes("total")) return null;
+    const importe = parseNum(get(["importe", "total"]));
+    const abonado = parseNum(get(["abonado", "pagado"]));
+    const pendiente = parseNum(get(["pendiente", "debe"]));
+    // Preferir CONSUMO 100% si existe, sino 70%
+    const consumo100 = parseNum(get(["consumo 100", "100%"]));
+    const consumo70  = parseNum(get(["consumo 70", "70%"]));
+    const consumo    = consumo100 || consumo70 || parseNum(get(["consumo"]));
     return {
-      mesa: get(["mesa", "id"]) || "",
+      mesa: sector,           // SECTOR es el ID de mesa (A, B, C...)
       sector: get(["sector"]) || "",
-      titular: get(["titular", "nombre"]) || "",
+      titular,
       publica: get(["publica", "rrpp"]) || "",
-      importe: parseNum(get(["importe", "total"])),
-      abonado: parseNum(get(["abonado", "pagado"])),
-      pendiente: parseNum(get(["pendiente", "debe"])),
-      consumo: parseNum(get(["consumo"]))
+      importe,
+      abonado,
+      pendiente,
+      consumo
     };
-  }).filter(m => m.mesa);
+  }).filter(m => m !== null && m.mesa && m.importe > 0 && !m.mesa.toLowerCase().includes("listado") && !m.mesa.toLowerCase().includes("sector"));
 }
 function parsePersonal(rows) {
   return rows.map(r => {
@@ -98,13 +154,13 @@ function parsePersonal(rows) {
       }
       return "";
     };
-    return {
-      rol: get(["rol", "puesto", "cargo", "concepto"]) || "",
-      qty: parseNum(get(["cant", "qty", "cantidad"])) || 1,
-      unit: parseNum(get(["unit", "costo", "precio", "valor"])),
-      total: parseNum(get(["total", "subtotal"]))
-    };
-  }).filter(r => r.rol);
+    const rol = get(["concepto", "rol", "puesto", "cargo"]) || "";
+    if (!rol || rol.toLowerCase().includes("total")) return null;
+    const qty  = parseNum(get(["cantidad", "cant", "qty"])) || 1;
+    const unit = parseNum(get(["costo unit", "unit", "costo", "precio", "valor"]));
+    const total = parseNum(get(["subtotal", "total"])) || qty * unit;
+    return { rol, qty, unit, total };
+  }).filter(r => r !== null && r.rol && r.total > 0);
 }
 function parseExtras(rows) {
   return rows.map(r => {
@@ -116,11 +172,11 @@ function parseExtras(rows) {
       }
       return "";
     };
-    return {
-      concepto: get(["concepto", "gasto", "item", "detalle"]) || "",
-      monto: parseNum(get(["monto", "total", "importe", "costo"]))
-    };
-  }).filter(r => r.concepto);
+    const concepto = get(["concepto", "gasto", "item", "detalle"]) || "";
+    if (!concepto || concepto.toLowerCase().includes("total")) return null;
+    const monto = parseNum(get(["importe", "monto", "total", "costo"]));
+    return { concepto, monto };
+  }).filter(r => r !== null && r.concepto && r.monto > 0);
 }
 function parseComisiones(rows) {
   return rows.map(r => {
@@ -132,13 +188,19 @@ function parseComisiones(rows) {
       }
       return "";
     };
-    return {
-      vendedor: get(["vendedor", "rrpp", "nombre"]) || "",
-      ventas: parseNum(get(["venta", "total", "recaudado"])),
-      rate: parseNum(get(["tasa", "rate", "%", "comision"])) || 0.10,
-      comision: parseNum(get(["comision", "monto", "pago"]))
-    };
-  }).filter(r => r.vendedor);
+    const vendedor = get(["publica", "vendedor", "rrpp", "nombre"]) || "";
+    if (!vendedor || vendedor.toLowerCase().includes("total")) return null;
+    // Ventas = suma de MESA $ + COMBOS $ + TICKETS $
+    const ventasMesa   = parseNum(get(["mesa $", "mesa"]));
+    const ventasCombos = parseNum(get(["combos $", "combos"]));
+    const ventasTickets = parseNum(get(["tickets $", "tickets"]));
+    const ventas = ventasMesa + ventasCombos + ventasTickets;
+    // Comision = SUBTOTAL (suma de COM. MESA + COM. COMBOS + COM. TICKETS)
+    const comision = parseNum(get(["subtotal"])) ||
+      parseNum(get(["com. mesa"])) + parseNum(get(["com. combos"])) + parseNum(get(["com. tickets"]));
+    const rate = ventas > 0 && comision > 0 ? comision / ventas : 0.10;
+    return { vendedor, ventas, rate, comision };
+  }).filter(r => r !== null && r.vendedor && r.ventas > 0);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -240,13 +302,14 @@ function parseBoleteria(rows) {
       }
       return "";
     };
-    return {
-      tipo: get(["tipo", "categoria", "entrada"]) || "",
-      qty: parseNum(get(["cant", "qty", "cantidad"])),
-      precio: parseNum(get(["precio", "valor", "unit"])),
-      total: parseNum(get(["total", "recaudado", "subtotal"]))
-    };
-  }).filter(r => r.tipo);
+    const tipo = get(["tipo entrada", "tipo", "categoria", "entrada"]) || "";
+    if (!tipo || tipo.toLowerCase().includes("total")) return null;
+    const qty    = parseNum(get(["cantidad", "cant", "qty"]));
+    const precio = parseNum(get(["precio unit", "precio", "valor", "unit"]));
+    // "Total Persona" es el total recaudado
+    const total  = parseNum(get(["total persona", "total", "recaudado", "subtotal"])) || qty * precio;
+    return { tipo, qty, precio, total };
+  }).filter(r => r !== null && r.tipo);
 }
 /* ─── SEED DATA (demo) ─── */
 const SEED = {
