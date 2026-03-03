@@ -377,9 +377,10 @@ export default function EventoLive() {
      Prioridad: HOJA FINAL > RESUMEN > RESUMEN LADO A
      FIX: parseResumen ahora detecta "lado a" correctamente
      ═══════════════════════════════════════════════════════ */
-  const loadEventData = useCallback(async (sheetId) => {
+  const loadEventData = useCallback(async (sheetId, eventoNombre) => {
     if (!sheetId) return;
     setLoading(true);
+    const eViernes = (eventoNombre || "").toLowerCase().includes("viernes");
     try {
       const tabNames = ["MESAS","PERSONAL","EXTRAS","COMISIONES","BOLETERIA"];
       const results = {};
@@ -392,6 +393,8 @@ export default function EventoLive() {
       let resumenRows = [];
       let source = "";
 
+      // HOJA FINAL solo para sábados (tiene Sabado + Master combinado)
+      // Para viernes no existe HOJA FINAL, pero si existe la cargamos igual
       const hojaFinal = await tryFetchTab(sheetId, "HOJA FINAL");
       if (hojaFinal.length > 0) {
         resumenRows = hojaFinal;
@@ -414,19 +417,24 @@ export default function EventoLive() {
         }
       }
 
-      /* ── Cargar RESUMEN MASTER y RESUMEN LADO A para desglose ── */
-      const resumenMaster = await tryFetchTab(sheetId, "RESUMEN MASTER");
+      /* ── RESUMEN MASTER: solo cargar si NO es viernes ── */
+      let resumenMasterRows = [];
+      if (!eViernes) {
+        resumenMasterRows = await tryFetchTab(sheetId, "RESUMEN MASTER");
+      }
+
+      /* ── RESUMEN LADO A para fallback de mesas ── */
       const resumenLadoA = source !== "RESUMEN LADO A"
         ? await tryFetchTab(sheetId, "RESUMEN LADO A")
         : [];
 
       console.log("📊 Resumen leído de:", source, "| Filas:", resumenRows.length,
-        "| Master:", resumenMaster.length > 0 ? "SI" : "NO");
+        "| Master:", resumenMasterRows.length > 0 ? "SI" : "NO",
+        "| Viernes:", eViernes);
 
-      // FIX: si parseResumen no encontró mesas desde HOJA FINAL,
-      // intentar completar con RESUMEN LADO A
       let parsedResumen = resumenRows.length > 0 ? parseResumen(resumenRows) : SEED.resumen;
 
+      // Fallback: si no encontró mesas, buscar en RESUMEN LADO A
       if (!parsedResumen.mesas && resumenLadoA.length > 0) {
         const parsedLadoA = parseResumen(resumenLadoA);
         if (parsedLadoA.mesas) {
@@ -442,7 +450,7 @@ export default function EventoLive() {
 
       const newData = {
         resumen: parsedResumen,
-        resumenMaster: resumenMaster.length > 0 ? parseResumen(resumenMaster) : null,
+        resumenMaster: resumenMasterRows.length > 0 ? parseResumen(resumenMasterRows) : null,
         resumenLadoA: (source !== "RESUMEN LADO A" && resumenLadoA.length > 0)
           ? parseResumen(resumenLadoA) : null,
         mesas: results.MESAS?.length ? parseMesas(results.MESAS) : SEED.mesas,
@@ -452,7 +460,7 @@ export default function EventoLive() {
         boleteria: results.BOLETERIA?.length ? parseBoleteria(results.BOLETERIA) : SEED.boleteria
       };
       setData(newData);
-      setResumenSource(source + (resumenMaster.length > 0 ? " + RESUMEN MASTER" : ""));
+      setResumenSource(source + (resumenMasterRows.length > 0 ? " + RESUMEN MASTER" : ""));
       setIsLive(true);
       setLastUpdate(new Date());
     } catch(e) {
@@ -468,11 +476,20 @@ export default function EventoLive() {
   }, []);
   useEffect(() => {
     if (selectedEvento?.sheetId) {
-      loadEventData(selectedEvento.sheetId);
-      const iv = setInterval(() => loadEventData(selectedEvento.sheetId), REFRESH_MS);
+      loadEventData(selectedEvento.sheetId, selectedEvento.nombre);
+      const iv = setInterval(() => loadEventData(selectedEvento.sheetId, selectedEvento.nombre), REFRESH_MS);
       return () => clearInterval(iv);
     }
   }, [selectedEvento, loadEventData]);
+
+  /* ─── TIPO EVENTO (viernes / master / sabado) ─── */
+  const tipoEvento = selectedEvento
+    ? (selectedEvento.nombre || "").toLowerCase().includes("viernes") ? "viernes"
+      : (selectedEvento.nombre || "").toLowerCase().includes("master") ? "master"
+      : "sabado"
+    : "sabado";
+  const labelEvento = tipoEvento === "viernes" ? "Viernes"
+    : tipoEvento === "master" ? "Master" : "Sabado";
 
   /* ─── DERIVED CALCS ─── */
   const totalPersonal = data.personal.reduce((s,r) => s + (r.total || r.qty * r.unit), 0);
@@ -495,8 +512,8 @@ export default function EventoLive() {
   const totalCostosConPosnet = totalCostos + totalComPosnet;
   const utilidad = resumen.utilidad || (ingresos - totalCostosConPosnet);
   const margen = ingresos > 0 ? utilidad / ingresos : 0;
-  /* ── Resumen Master (si existe) ── */
-  const resMaster = data.resumenMaster || null;
+  /* ── Resumen Master — solo si el evento NO es viernes y realmente hay datos ── */
+  const resMaster = (tipoEvento !== "viernes" && data.resumenMaster) ? data.resumenMaster : null;
   const comPosnetIngresosMaster = resMaster?.comPosnetIngresos || 0;
   const comPosnetBoleteriaMaster = resMaster?.comPosnetBoleteria || 0;
   const comPosnetBarraMaster = resMaster?.comPosnetBarra || 0;
@@ -616,7 +633,7 @@ export default function EventoLive() {
       )}
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.b }}>
-          Ingresos Previos {resMaster ? "(Sabado)" : ""}
+          Ingresos Previos {resMaster ? `(${labelEvento})` : ""}
         </div>
         <div style={grid3}>
           <div>
@@ -641,7 +658,7 @@ export default function EventoLive() {
       </div>
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: C.w }}>
-          Desglose general {resMaster ? "(Sabado)" : ""}
+          Desglose general {resMaster ? `(${labelEvento})` : ""}
         </div>
         <div style={grid3}>
           <div>
@@ -671,7 +688,7 @@ export default function EventoLive() {
       </div>
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.p }}>
-          Boleteria {resMaster ? "(Sabado)" : ""}
+          Boleteria {resMaster ? `(${labelEvento})` : ""}
         </div>
         <div style={grid3}>
           <div>
@@ -696,7 +713,7 @@ export default function EventoLive() {
       </div>
       <div style={{ ...card, marginTop: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: C.v }}>
-          Barra MP {resMaster ? "(Sabado)" : ""}
+          Barra MP {resMaster ? `(${labelEvento})` : ""}
         </div>
         <div style={grid3}>
           <div>
@@ -720,7 +737,7 @@ export default function EventoLive() {
         )}
       </div>
       <PosnetCard
-        titulo={resMaster ? "Comisiones Posnet (Sabado)" : "Comisiones Posnet"}
+        titulo={resMaster ? `Comisiones Posnet (${labelEvento})` : "Comisiones Posnet"}
         posnetIng={comPosnetIngresos} posnetBol={comPosnetBoleteria}
         posnetBar={comPosnetBarra} totalPosnet={totalComPosnet}
       />
