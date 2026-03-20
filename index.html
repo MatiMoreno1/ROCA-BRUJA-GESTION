@@ -657,9 +657,14 @@ function loadData(){
     }
   }, 8000);
 
+  // Use fetch with no-cors workaround via CSV export
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_NAME)}&_=${Date.now()}`;
+  
+  // Try JSONP first, fallback to static
   const script = document.createElement('script');
   script.id = 'gviz-script';
   script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&callback=${cbName}&sheet=${encodeURIComponent(SHEET_NAME)}&_=${Date.now()}`;
+  script.crossOrigin = 'anonymous';
   script.onerror = ()=>{
     clearTimeout(timeout);
     delete window[cbName];
