@@ -686,6 +686,53 @@ function findVal(match, col, nth){
   return null;
 }
 
+
+function renderCharts(ing,cv,mc,cf,rop,nop,neto,rbIng,lpIng,cvRB,cvLP){
+  const RED='#dc2626',GREEN='#16a34a',YELLOW='#d97706',BLUE='#2563eb',ORANGE='#ea580c',MUTED='#9ca3af';
+  // Waterfall P&L
+  const wfLabels=['Ingresos','Costos Var.','Margen Cont.','Costos Fijos','Res. Operativo','No Operativo','Utilidad Neta'];
+  const wfData=[ing,-cv,mc,-cf,rop,-nop,neto];
+  const wfColors=[GREEN,RED,YELLOW,RED,BLUE,RED,neto>=0?GREEN:RED];
+  makeChart('chartWF','bar',{labels:wfLabels,datasets:[{data:wfData,backgroundColor:wfColors,borderRadius:4}]},{plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:sc.y}});
+  makeChart('chartWF2','bar',{labels:wfLabels,datasets:[{data:wfData,backgroundColor:wfColors,borderRadius:4}]},{plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:sc.y}});
+  // Margenes bar chart
+  if(ing){
+    const bm=document.getElementById('barMargenes'); if(bm){
+      const items=[['Margen Contrib.',mc,ing,YELLOW],['Res. Operativo',rop,ing,BLUE],['Utilidad Neta',neto,ing,neto>=0?GREEN:RED]];
+      bm.innerHTML=items.map(([n,v,d,c])=>`<div class="bar-list"><div class="bar-top"><span class="bar-name">${n}</span><span class="bar-pct">${fmtP(v,d)}</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.abs(v/d)*100).toFixed(1)}%;background:${c}"></div></div></div>`).join('');
+    }
+  }
+  // Margenes % chart
+  makeChart('chartMarg','bar',{labels:['MC%','Res.Op%','Neto%'],datasets:[{data:[ing?mc/ing*100:0,ing?rop/ing*100:0,ing?neto/ing*100:0],backgroundColor:[YELLOW,BLUE,neto>=0?GREEN:RED],borderRadius:4}]},{plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:{...sc.y,ticks:{...sc.y.ticks,callback:v=>v.toFixed(0)+'%'}}}});
+  // Donut ingresos
+  makeChart('chartDonut','doughnut',{labels:['RB','LP'],datasets:[{data:[rbIng,lpIng],backgroundColor:[RED+'cc',BLUE+'cc'],borderWidth:0}]},{plugins:{...base.plugins},cutout:'65%'});
+  // Egresos
+  makeChart('chartEgresos','doughnut',{labels:['CV','CF','No Op.'],datasets:[{data:[cv,cf,nop],backgroundColor:[RED+'cc',ORANGE+'cc',MUTED+'cc'],borderWidth:0}]},{plugins:{...base.plugins},cutout:'65%'});
+  // CV RB donut
+  const cmv=findVal('Mercadería Vendida',RB)||0;
+  const dj=(findVal('DJ / Artísticos',RB)||0)+(findVal('DJ Electrónica',RB)||0);
+  const pub=(findVal('Públicas Sabado',RB)||0)+(findVal('Públicas Viernes',RB)||0)+(findVal('Publicas Master',RB)||0);
+  const coms=(findVal('Comision Juan',RB)||0)+(findVal('Comision Santi',RB)||0)+(findVal('Comision Toto',RB)||0);
+  makeChart('chartCVRB','doughnut',{labels:['CMV','DJ','Públicas','Comisiones'],datasets:[{data:[Math.abs(cmv),Math.abs(dj),Math.abs(pub),Math.abs(coms)],backgroundColor:[RED+'cc',BLUE+'cc',YELLOW+'cc',GREEN+'cc'],borderWidth:0}]},{plugins:{...base.plugins},cutout:'65%'});
+  // CV LP donut
+  const per=findVal('Personal',LP)||0;
+  const merc=findVal('Mercadería e Insumos',LP)||0;
+  const film=findVal('Filmaker',LP)||0;
+  makeChart('chartCVLP','doughnut',{labels:['Personal','Mercadería','Filmaker'],datasets:[{data:[Math.abs(per),Math.abs(merc),Math.abs(film)],backgroundColor:[RED+'cc',BLUE+'cc',YELLOW+'cc'],borderWidth:0}]},{plugins:{...base.plugins},cutout:'65%'});
+  // CF bar
+  const cfItems=['Sueldos Producción','Sueldos Op / Adm','Seguro','Edilicio','Gastos Servicios','Proveedores Varios','Room'];
+  const cfVals=cfItems.map(m=>Math.abs(findVal(m,RB)||0));
+  makeChart('chartCF','bar',{labels:cfItems.map(l=>l.substring(0,12)),datasets:[{data:cfVals,backgroundColor:ORANGE+'cc',borderRadius:4}]},{plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:sc.y}});
+  // No operativo
+  const nopLabels=['Tomy Ing.','Tomy Pag.','PMO BBVA','Producción','Extraordinarios','Aj.Sueldos','Aj.Proveedores'];
+  const nopVals=[findVal('Aporte / Préstamo',TOT)||0, -(findVal('Pago / Devolución',TOT)||0), -(findVal('PMO BBVA',TOT)||0), -(findVal('Producción (mov',TOT)||0), -(findVal('Extraordinarios',TOT,1)||0), -(findVal('Sueldos (período anterior)',TOT)||0), -(findVal('Proveedores Varios',TOT,2)||0)];
+  makeChart('chartNoOp','bar',{labels:nopLabels,datasets:[{data:nopVals,backgroundColor:nopVals.map(v=>v>=0?GREEN+'cc':RED+'cc'),borderRadius:4}]},{plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:sc.y}});
+  // Fechas RB
+  const fechas=['06/03','07/03','14/03','21/03','28/03','23/3'];
+  const fechaVals=fechas.map(f=>findVal(f,RB)||0);
+  makeChart('chartFechas','bar',{labels:fechas,datasets:[{label:'Ingresos RB',data:fechaVals,backgroundColor:RED+'cc',borderRadius:4}]},{plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:sc.y}});
+}
+
 function renderAll(){
   Object.entries(LABEL_MAP).forEach(([id,cfg])=>{
     const el=document.getElementById(id); if(!el)return;
