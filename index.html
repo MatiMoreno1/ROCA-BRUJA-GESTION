@@ -1,20 +1,905 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RB Productora - Gesti&oacute;n</title>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
-    <style>
-      * { margin:0; padding:0; box-sizing:border-box; }
-      body { background:#060609; }
-      ::-webkit-scrollbar { width:6px; height:6px; }
-      ::-webkit-scrollbar-track { background:#0e0e14; }
-      ::-webkit-scrollbar-thumb { background:#2a2a3a; border-radius:3px; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/main.jsx"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GR Productora — Dashboard en vivo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f5f7;--white:#fff;--card:#fff;--border:#e2e5ea;--border-dark:#c8cdd6;
+  --text:#1a1d23;--muted:#6b7280;--light:#9ca3af;
+  --red:#dc2626;--red-bg:#fef2f2;--red-light:#fee2e2;
+  --green:#16a34a;--green-bg:#f0fdf4;--green-light:#dcfce7;
+  --yellow:#d97706;--yellow-bg:#fffbeb;--yellow-light:#fef3c7;
+  --blue:#2563eb;--blue-bg:#eff6ff;--blue-light:#dbeafe;
+  --orange:#ea580c;--orange-bg:#fff7ed;--orange-light:#fed7aa;
+  --purple:#7c3aed;--purple-bg:#faf5ff;--purple-light:#e9d5ff;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+
+/* LOADING */
+#loading-overlay{position:fixed;inset:0;background:var(--white);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s}
+#loading-overlay.hidden{opacity:0;pointer-events:none}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:1px}
+
+/* LIVE BADGE */
+.live-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green-bg);border:1px solid var(--green-light);padding:3px 10px;border-radius:12px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.error-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--red);background:var(--red-bg);border:1px solid var(--red-light);padding:3px 10px;border-radius:12px}
+
+/* HEADER */
+.header{background:var(--white);border-bottom:1px solid var(--border);padding:0 40px;display:flex;align-items:stretch;justify-content:space-between;min-height:72px;flex-wrap:wrap;gap:0}
+.header-left{display:flex;align-items:center;gap:16px;padding:16px 20px 16px 0;border-right:1px solid var(--border);margin-right:24px}
+.header-logo{width:36px;height:36px;background:var(--red);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;font-family:var(--mono);flex-shrink:0}
+.header-title{font-size:15px;font-weight:700;letter-spacing:-.3px}
+.header-sub{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+.header-right{display:flex;align-items:center;gap:28px;flex:1;justify-content:flex-end;padding:16px 0;flex-wrap:wrap}
+.header-stat{text-align:right}
+.header-stat-val{font-family:var(--mono);font-size:15px;font-weight:600}
+.header-stat-val.pos{color:var(--green)}.header-stat-val.neg{color:var(--red)}.header-stat-val.warn{color:var(--yellow)}.header-stat-val.neu{color:var(--text)}
+.header-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:1px;font-family:var(--mono)}
+.header-divider{width:1px;height:32px;background:var(--border)}
+
+/* NAV */
+nav{background:var(--white);border-bottom:1px solid var(--border);padding:0 40px;display:flex;gap:0;overflow-x:auto}
+.tab{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.5px;text-transform:uppercase;padding:13px 16px;border:none;background:transparent;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.tab:hover{color:var(--text)}.tab.active{color:var(--red);border-bottom-color:var(--red);font-weight:600}
+
+/* LAYOUT */
+.page{display:none;padding:28px 40px 80px;max-width:1300px;margin:0 auto}
+.page.active{display:block}
+
+/* KPI */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:24px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:16px 14px;position:relative}
+.kpi-accent{position:absolute;top:0;left:0;right:0;height:3px;border-radius:8px 8px 0 0}
+.kpi-label{font-size:9px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:7px}
+.kpi-val{font-family:var(--mono);font-size:18px;font-weight:600;line-height:1}
+.kpi-val.pos{color:var(--green)}.kpi-val.neg{color:var(--red)}.kpi-val.warn{color:var(--yellow)}.kpi-val.info{color:var(--blue)}.kpi-val.neu{color:var(--text)}
+.kpi-sub{font-size:10px;color:var(--light);margin-top:5px;font-family:var(--mono)}
+
+/* SECTION */
+.sh{display:flex;align-items:center;gap:10px;margin:24px 0 12px}
+.sn{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--white);background:var(--red);padding:2px 7px;border-radius:3px;letter-spacing:.5px}
+.sn.blue{background:var(--blue)}.sn.green{background:var(--green)}.sn.orange{background:var(--orange)}.sn.purple{background:var(--purple)}
+.st{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text);font-family:var(--mono)}
+.sl{flex:1;height:1px;background:var(--border)}
+
+/* GRID */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+
+/* CARD */
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+.card-hd{padding:10px 16px;border-bottom:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:10px;font-family:var(--mono);font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.card-body{padding:16px}
+.cbadge{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:12px}
+.badge-rb{background:var(--red-bg);color:var(--red);border:1px solid var(--red-light)}
+.badge-lp{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-light)}
+.badge-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-light)}
+
+/* TABLE */
+.tw{background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+table{width:100%;border-collapse:collapse}
+thead tr{background:#fafbfc}
+th{font-family:var(--mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+th.r{text-align:right}
+td{font-family:var(--mono);font-size:11px;padding:8px 14px;border-bottom:1px solid #f3f4f6;color:var(--text)}
+td.r{text-align:right}td.m{color:var(--light);font-size:10px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f9fafb}
+tr.ghd td{background:#f3f4f6;color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 14px;font-weight:600}
+tr.ghd:hover td{background:#f3f4f6}
+tr.sub td{background:#fafbfc;font-weight:600;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+tr.sub:hover td{background:#fafbfc}
+tr.rg td{background:var(--green-bg);color:var(--green);font-weight:700;font-size:12px;border-top:2px solid #bbf7d0}
+tr.rg:hover td{background:var(--green-bg)}
+tr.rr td{background:var(--red-bg);color:var(--red);font-weight:700;font-size:12px;border-top:2px solid var(--red-light)}
+tr.rr:hover td{background:var(--red-bg)}
+tr.ry td{background:var(--yellow-bg);color:var(--yellow);font-weight:700;font-size:12px;border-top:2px solid var(--yellow-light)}
+tr.ry:hover td{background:var(--yellow-bg)}
+tr.rb td{background:var(--blue-bg);color:var(--blue);font-weight:700;font-size:12px;border-top:2px solid var(--blue-light)}
+tr.rb:hover td{background:var(--blue-bg)}
+tr.nota td{font-size:10px;color:var(--muted);background:#fffbeb;font-style:italic;padding:5px 14px;border-left:3px solid var(--yellow)}
+tr.nota:hover td{background:#fffbeb}
+.pos{color:var(--green)!important}.neg{color:var(--red)!important}.warn{color:var(--yellow)!important}.info{color:var(--blue)!important}
+
+/* NOTE */
+.nb{border-left:4px solid var(--yellow);border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:14px;background:var(--yellow-bg);border:1px solid var(--yellow-light);border-left:4px solid var(--yellow)}
+.nb.blue{background:var(--blue-bg);border-color:var(--blue-light);border-left-color:var(--blue)}
+.nb.red{background:var(--red-bg);border-color:var(--red-light);border-left-color:var(--red)}
+.nb.purple{background:var(--purple-bg);border-color:var(--purple-light);border-left-color:var(--purple)}
+.nb-label{font-size:10px;font-family:var(--mono);font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--yellow);margin-bottom:6px}
+.nb-label.blue{color:var(--blue)}.nb-label.red{color:var(--red)}.nb-label.purple{color:var(--purple)}
+.nb-text{font-size:13px;color:var(--text);line-height:1.65}
+
+/* STOCK */
+.stock-hd{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;background:#fafbfc;border-bottom:1px solid var(--border);padding:9px 14px}
+.stock-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;padding:7px 14px;border-bottom:1px solid #f3f4f6;align-items:center}
+.stock-row:hover{background:#f9fafb}
+.sc{font-family:var(--mono);font-size:11px}.sc.r{text-align:right}.sc.hd{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.si{font-family:var(--mono);font-size:11px;border:1px solid var(--border);border-radius:4px;padding:3px 7px;width:100%;text-align:right;background:#f9fafb;color:var(--text);transition:border .15s}
+.si:focus{outline:none;border-color:var(--blue);background:white}
+.sghd{background:#f3f4f6;padding:5px 14px;font-size:9px;font-family:var(--mono);font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)}
+
+/* REFRESH BTN */
+.refresh-btn{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:6px 14px;border:1px solid var(--border);border-radius:4px;background:white;color:var(--muted);cursor:pointer;transition:all .15s;text-transform:uppercase}
+.refresh-btn:hover{border-color:var(--red);color:var(--red)}
+
+/* BAR */
+.bar-list{display:flex;flex-direction:column;gap:12px}
+.bar-top{display:flex;justify-content:space-between;margin-bottom:4px}
+.bar-name{font-size:11px;font-family:var(--mono);color:var(--text)}
+.bar-pct{font-size:11px;font-family:var(--mono);color:var(--muted)}
+.bar-track{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px}
+
+@media(max-width:600px){.header,.page,nav{padding-left:16px;padding-right:16px}.header-right{display:none}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Conectando con Google Sheets...</div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">GR</div>
+    <div>
+      <div class="header-title">GR Productora</div>
+      <div class="header-sub">Estado de Resultados — <span id="hdr-periodo">Cargando...</span></div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div id="sync-badge" class="live-badge"><div class="live-dot"></div>En vivo</div>
+    <button class="refresh-btn" onclick="loadData()">↻ Actualizar</button>
+    <div class="header-divider"></div>
+    <div class="header-stat"><div class="header-stat-val pos" id="hkpi-ing">—</div><div class="header-stat-label">Ingresos</div></div>
+    <div class="header-divider"></div>
+    <div class="header-stat"><div class="header-stat-val warn" id="hkpi-op">—</div><div class="header-stat-label">Res. Operativo</div></div>
+    <div class="header-divider"></div>
+    <div class="header-stat"><div class="header-stat-val pos" id="hkpi-neto">—</div><div class="header-stat-label">Utilidad Neta</div></div>
+    <div class="header-divider"></div>
+    <div class="header-stat"><div class="header-stat-val neu" id="hkpi-margen">—</div><div class="header-stat-label">Margen Neto</div></div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <button class="tab active" onclick="go('resumen',this)">Resumen</button>
+  <button class="tab" onclick="go('ingresos',this)">Ingresos</button>
+  <button class="tab" onclick="go('cv',this)">Costos Variables</button>
+  <button class="tab" onclick="go('cf',this)">Costos Fijos</button>
+  <button class="tab" onclick="go('nooperativo',this)">No Operativo</button>
+  <button class="tab" onclick="go('resultado',this)">Resultado</button>
+  <button class="tab" onclick="go('stock',this)">Stock 1° Abril</button>
+</nav>
+
+<!-- ══ RESUMEN ══ -->
+<div class="page active" id="page-resumen">
+  <div class="kpi-row" style="margin-top:24px">
+    <div class="kpi"><div class="kpi-accent" style="background:var(--green)"></div><div class="kpi-label">Ingresos Operativos</div><div class="kpi-val pos" id="k-ing">—</div><div class="kpi-sub" id="k-ing-sub">—</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">Costos Variables</div><div class="kpi-val neg" id="k-cv">—</div><div class="kpi-sub" id="k-cv-sub">—</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--yellow)"></div><div class="kpi-label">Margen Contribución</div><div class="kpi-val warn" id="k-mc">—</div><div class="kpi-sub" id="k-mc-sub">—</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--orange)"></div><div class="kpi-label">Costos Fijos</div><div class="kpi-val" style="color:var(--orange)" id="k-cf">—</div><div class="kpi-sub">GR Productora compartidos</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Resultado Operativo</div><div class="kpi-val info" id="k-rop">—</div><div class="kpi-sub" id="k-rop-sub">—</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">No Operativo</div><div class="kpi-val neg" id="k-nop">—</div><div class="kpi-sub">Deudas · Ajustes · Capital</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--green)"></div><div class="kpi-label">Utilidad Neta</div><div class="kpi-val pos" id="k-neto">—</div><div class="kpi-sub" id="k-neto-sub">—</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card"><div class="card-hd"><span class="card-title">Cascada P&L</span></div><div class="card-body"><canvas id="chartWF" height="220"></canvas></div></div>
+    <div class="card"><div class="card-hd"><span class="card-title">Márgenes %</span></div><div class="card-body"><canvas id="chartMarg" height="220"></canvas></div></div>
+  </div>
+  <div class="two-col">
+    <div class="card"><div class="card-hd"><span class="card-title">Ingresos por Unidad</span><span class="cbadge badge-ok" id="donut-label">—</span></div><div class="card-body" style="display:flex;justify-content:center"><canvas id="chartDonut" style="max-width:210px"></canvas></div></div>
+    <div class="card"><div class="card-hd"><span class="card-title">Estructura de Egresos</span></div><div class="card-body" style="display:flex;justify-content:center"><canvas id="chartEgresos" style="max-width:210px"></canvas></div></div>
+  </div>
+
+  <!-- RECONCILIACION -->
+  <div class="sh"><span class="sn purple">REC</span><span class="st">Reconciliación — Utilidad Contable vs Caja Real</span><div class="sl"></div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Concepto</th><th class="r">($ARS)</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr class="rg"><td>Utilidad Neta (contable)</td><td class="r pos" id="rec-neto">—</td><td style="font-size:11px;color:var(--green)">Resultado según P&L del período</td></tr>
+      <tr><td>− Inscripciones LP ya usadas en enero</td><td class="r neg">($11,000,000)</td><td class="m">Cobradas y ejecutadas en ene (Pinamar + compromisos dic)</td></tr>
+      <tr><td>− Sobrecosto mercadería comprada por fuera</td><td class="r neg">
+        <input id="merch-input" type="number" class="si" style="width:140px" placeholder="Ingresá monto" min="0" oninput="recalcRecon()">
+      </td><td class="m">Compra de mercadería fuera del proveedor habitual — precio mayor al estándar</td></tr>
+      <tr class="sub"><td>= Caja Real Estimada</td><td class="r warn" id="rec-caja">—</td><td class="m">Utilidad ajustada por diferencias de caja</td></tr>
+      <tr><td>Brecha contable vs caja</td><td class="r neg" id="rec-gap">($11,000,000)</td><td class="m">Diferencia explicada por los ítems arriba</td></tr>
+    </tbody>
+  </table></div>
+  <div class="nb purple">
+    <div class="nb-label purple">⚑ Lectura del resultado: por qué la caja difiere de la utilidad contable</div>
+    <div class="nb-text">
+      El P&L marca una utilidad neta de <strong id="rec-neto-txt">—</strong>, pero ese número no coincide con la caja real por dos razones concretas:<br><br>
+      <strong>1. Inscripciones LP ($11M):</strong> los equipos pagaron parte de su inscripción en enero. Se registra como ingreso de marzo (devengado), pero ya fue utilizado para financiar el viaje a Pinamar del staff y cubrir compromisos de diciembre.<br><br>
+      <strong>2. Mercadería comprada por fuera:</strong> se realizaron compras a proveedores externos (precio de mercado mayor al negociado con Diswine/Branca). Ese sobrecosto está incluido en el CMV y reduce el margen real disponible.<br><br>
+      Sumando ambos conceptos, la diferencia entre utilidad contable y caja real es prácticamente equivalente a esos dos ítems combinados.
+    </div>
+  </div>
+</div>
+
+<!-- ══ INGRESOS ══ -->
+<div class="page" id="page-ingresos">
+  <div class="kpi-row" style="margin-top:24px">
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">Subtotal RB</div><div class="kpi-val pos" id="i-rb">—</div><div class="kpi-sub">4 sáb + 2 vie + Financista</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Subtotal LP</div><div class="kpi-val pos" id="i-lp">—</div><div class="kpi-sub">Torneo Apertura 2026</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--green)"></div><div class="kpi-label">Total Ingresos</div><div class="kpi-val pos" id="i-total">—</div><div class="kpi-sub">Base del período</div></div>
+  </div>
+  <div class="sh"><span class="sn">RB</span><span class="st">Roca Bruja — 4 Sábados + 2 Viernes</span><div class="sl"></div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Fecha / Concepto</th><th>Ref.</th><th class="r">Monto ($ARS)</th><th class="r">Total ($ARS)</th></tr></thead>
+    <tbody>
+      <tr><td>Ingreso 06/03 (sábado)</td><td class="m">6/3</td><td class="r pos" id="i-rb-06">—</td><td class="r pos" id="i-rb-06t">—</td></tr>
+      <tr><td>Ingreso 07/03 (viernes)</td><td class="m">7/3</td><td class="r pos" id="i-rb-07">—</td><td class="r pos" id="i-rb-07t">—</td></tr>
+      <tr><td>Ingreso 14/03 (sábado)</td><td class="m">14/3</td><td class="r pos" id="i-rb-14">—</td><td class="r pos" id="i-rb-14t">—</td></tr>
+      <tr><td>Ingreso 21/03 (sábado)</td><td class="m">21/3</td><td class="r warn" id="i-rb-21">—</td><td class="r warn" id="i-rb-21t">—</td></tr>
+      <tr><td>Ingreso 28/03 (sábado)</td><td class="m">28/3</td><td class="r warn" id="i-rb-28">—</td><td class="r warn" id="i-rb-28t">—</td></tr>
+      <tr><td>Ingreso 23/03 (viernes)</td><td class="m">23/3</td><td class="r" id="i-rb-23">—</td><td class="r" id="i-rb-23t">—</td></tr>
+      <tr><td>Ingreso Financista (Tomy Perez)</td><td class="m">—</td><td class="r">—</td><td class="r pos" id="i-rb-fin">—</td></tr>
+      <tr class="sub"><td>Subtotal Ingresos RB</td><td></td><td class="r pos" id="i-rb-sub">—</td><td class="r pos" id="i-rb-total">—</td></tr>
+    </tbody>
+  </table></div>
+  <div class="sh"><span class="sn blue">LP</span><span class="st">Los Pastos — Torneo Apertura 2026</span><div class="sl"></div></div>
+  <div class="nb blue"><div class="nb-label blue">⚑ Nota — Inscripciones: $11M utilizados en enero</div>
+    <div class="nb-text">El ingreso por inscripciones totaliza <strong id="i-lp-insc-txt">—</strong>. De ese monto, <strong>$11,000,000 fueron percibidos y utilizados en enero</strong>, para cubrir los gastos del viaje a Pinamar y obligaciones pendientes de diciembre. Ese dinero ya fue consumido y no impacta positivamente en la caja de marzo.</div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Concepto</th><th>Ref.</th><th class="r">LP ($ARS)</th><th class="r">Total ($ARS)</th></tr></thead>
+    <tbody>
+      <tr><td>Ingresos Equipos (inscripciones)</td><td class="m">Total mes</td><td class="r pos" id="i-lp-insc">—</td><td class="r pos" id="i-lp-insct">—</td></tr>
+      <tr class="nota"><td colspan="4">⚑ $11,000,000 cobrados y utilizados en enero (Pinamar + compromisos dic). Ya ejecutados en caja.</td></tr>
+      <tr><td>Ingresos Barra</td><td class="m">Total mes</td><td class="r pos" id="i-lp-barra">—</td><td class="r pos" id="i-lp-barrat">—</td></tr>
+      <tr><td>Ingresos Estacionamiento</td><td class="m">Total mes</td><td class="r pos" id="i-lp-estac">—</td><td class="r pos" id="i-lp-estact">—</td></tr>
+      <tr><td>Comisiones MP / Posnet</td><td class="m">Total mes</td><td class="r neg" id="i-lp-com">—</td><td class="r neg" id="i-lp-comt">—</td></tr>
+      <tr><td>Ingreso Torneo de Truco</td><td class="m">Total mes</td><td class="r" id="i-lp-truco">—</td><td class="r">—</td></tr>
+      <tr><td>Ingresos Amistosos</td><td class="m">Total mes</td><td class="r" id="i-lp-amist">—</td><td class="r">—</td></tr>
+      <tr><td>Ingreso Pádel</td><td class="m">Total mes</td><td class="r pos" id="i-lp-padel">—</td><td class="r pos" id="i-lp-padelt">—</td></tr>
+      <tr class="sub"><td>Subtotal Ingresos LP</td><td></td><td class="r pos" id="i-lp-sub">—</td><td class="r pos" id="i-lp-total">—</td></tr>
+    </tbody>
+  </table></div>
+  <div class="tw"><table><tbody><tr class="rg"><td>TOTAL INGRESOS OPERATIVOS</td><td></td><td class="r" id="i-total2">—</td><td class="r" id="i-total3">—</td></tr></tbody></table></div>
+  <div class="card"><div class="card-hd"><span class="card-title">Ingresos por fecha — RB</span><span class="cbadge badge-rb">Fechas confirmadas</span></div><div class="card-body"><canvas id="chartFechas" height="160"></canvas></div></div>
+</div>
+
+<!-- ══ CV ══ -->
+<div class="page" id="page-cv">
+  <div class="kpi-row" style="margin-top:24px">
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">CV Roca Bruja</div><div class="kpi-val neg" id="cv-rb">—</div><div class="kpi-sub" id="cv-rb-sub">—</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">CV Los Pastos</div><div class="kpi-val neg" id="cv-lp">—</div><div class="kpi-sub" id="cv-lp-sub">—</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">Total CV</div><div class="kpi-val neg" id="cv-total">—</div><div class="kpi-sub">% sobre ingresos totales</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--yellow)"></div><div class="kpi-label">Margen Contribución</div><div class="kpi-val warn" id="cv-mc">—</div><div class="kpi-sub" id="cv-mc-sub">—</div></div>
+  </div>
+  <div class="nb red"><div class="nb-label red">⚑ Alerta — Mercadería comprada por fuera del proveedor habitual</div>
+    <div class="nb-text">Durante el mes se realizaron compras de mercadería a proveedores externos (fuera de Diswine, Branca, etc.) a <strong>precio de mercado minorista/semi-mayorista</strong>, significativamente mayor al precio negociado. Ese sobrecosto está incluido en el CMV de <strong id="cv-cmv-txt">—</strong> y es uno de los factores que explican la diferencia entre la utilidad contable y la caja real disponible.</div>
+  </div>
+  <div class="two-col">
+    <div>
+      <div class="sh"><span class="sn">RB</span><span class="st">CV Roca Bruja</span><div class="sl"></div></div>
+      <div class="tw"><table>
+        <thead><tr><th>Concepto</th><th>Ref.</th><th class="r">($ARS)</th></tr></thead>
+        <tbody>
+          <tr><td>Costo Mercadería Vendida (CMV)</td><td class="m">Total mes</td><td class="r neg" id="cv-rb-cmv">—</td></tr>
+          <tr><td>Gastos DJ / Artísticos</td><td class="m">Total mes</td><td class="r neg" id="cv-rb-dj1">—</td></tr>
+          <tr><td>Gastos DJ Electrónica</td><td class="m">Total mes</td><td class="r neg" id="cv-rb-dj2">—</td></tr>
+          <tr><td>Públicas Sábado</td><td class="m">Total mes</td><td class="r" id="cv-rb-pub1">—</td></tr>
+          <tr><td>Públicas Viernes</td><td class="m">Total mes</td><td class="r" id="cv-rb-pub2">—</td></tr>
+          <tr><td>Públicas Master</td><td class="m">Total mes</td><td class="r" id="cv-rb-pub3">—</td></tr>
+          <tr><td>Condimentos</td><td class="m">Total mes</td><td class="r" id="cv-rb-cond">—</td></tr>
+          <tr><td>Comisión Juan L</td><td class="m">Total mes</td><td class="r" id="cv-rb-com1">—</td></tr>
+          <tr><td>Comisión Santi Barbieri</td><td class="m">Total mes</td><td class="r" id="cv-rb-com2">—</td></tr>
+          <tr><td>Comisión Toto</td><td class="m">Total mes</td><td class="r" id="cv-rb-com3">—</td></tr>
+          <tr class="sub"><td>Subtotal CV — RB</td><td></td><td class="r neg" id="cv-rb-sub2">—</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div>
+      <div class="sh"><span class="sn blue">LP</span><span class="st">CV Los Pastos</span><div class="sl"></div></div>
+      <div class="tw"><table>
+        <thead><tr><th>Concepto</th><th>Ref.</th><th class="r">($ARS)</th></tr></thead>
+        <tbody>
+          <tr><td>Personal</td><td class="m">Planilla LP → Gs. Empleados</td><td class="r neg" id="cv-lp-per">—</td></tr>
+          <tr><td>Mercadería e Insumos</td><td class="m">Planilla LP → Gs. Mercadería</td><td class="r neg" id="cv-lp-merc">—</td></tr>
+          <tr><td>Gastos Varios</td><td class="m">Planilla LP → Gs. Varios</td><td class="r" id="cv-lp-var">—</td></tr>
+          <tr><td>Filmaker y Fotógrafo</td><td class="m">Planilla LP → Filmaker/Foto</td><td class="r neg" id="cv-lp-film">—</td></tr>
+          <tr class="sub"><td>Subtotal CV — LP</td><td></td><td class="r neg" id="cv-lp-sub2">—</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="tw"><table><tbody>
+    <tr class="rr"><td>TOTAL COSTOS VARIABLES</td><td></td><td class="r" id="cv-total2">—</td><td class="r" id="cv-total3">—</td></tr>
+    <tr class="ry"><td>MARGEN DE CONTRIBUCIÓN (Ing. − CV)</td><td></td><td class="r" id="cv-mc2">—</td><td class="r" id="cv-mc3">—</td></tr>
+  </tbody></table></div>
+  <div class="two-col">
+    <div class="card"><div class="card-hd"><span class="card-title">Composición CV — RB</span></div><div class="card-body" style="display:flex;justify-content:center"><canvas id="chartCVRB" style="max-width:210px"></canvas></div></div>
+    <div class="card"><div class="card-hd"><span class="card-title">Composición CV — LP</span></div><div class="card-body" style="display:flex;justify-content:center"><canvas id="chartCVLP" style="max-width:210px"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══ CF ══ -->
+<div class="page" id="page-cf">
+  <div class="kpi-row" style="margin-top:24px">
+    <div class="kpi"><div class="kpi-accent" style="background:var(--orange)"></div><div class="kpi-label">Total Costos Fijos</div><div class="kpi-val" style="color:var(--orange)" id="cf-total">—</div><div class="kpi-sub">Compartidos GR Productora</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">% sobre ingresos</div><div class="kpi-val info" id="cf-pct">—</div><div class="kpi-sub">Estructura del período</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Resultado Operativo</div><div class="kpi-val info" id="cf-rop">—</div><div class="kpi-sub" id="cf-rop-sub">—</div></div>
+  </div>
+  <div class="sh"><span class="sn orange">3</span><span class="st">Costos Fijos — GR Productora (compartidos)</span><div class="sl"></div></div>
+  <div class="two-col">
+    <div class="tw"><table>
+      <thead><tr><th>Concepto</th><th>Tipo</th><th class="r">($ARS)</th></tr></thead>
+      <tbody>
+        <tr><td>Sueldos Producción</td><td class="m">Fijo compartido</td><td class="r" id="cf-sue1">—</td></tr>
+        <tr><td>Sueldos Op / Adm / Gerencia</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-sue2">—</td></tr>
+        <tr><td>Gastos Empleados Eventuales</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-even">—</td></tr>
+        <tr><td>Contadora</td><td class="m">Fijo compartido</td><td class="r" id="cf-cont">—</td></tr>
+        <tr><td>Seguro</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-seg">—</td></tr>
+        <tr><td>Edilicio</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-edil">—</td></tr>
+        <tr><td>Gastos Servicios (luz, gas, etc.)</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-serv">—</td></tr>
+        <tr><td>Gastos Mantenimiento Personal</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-mant">—</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tw"><table>
+      <thead><tr><th>Concepto</th><th>Tipo</th><th class="r">($ARS)</th></tr></thead>
+      <tbody>
+        <tr><td>Proveedores Varios</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-prov">—</td></tr>
+        <tr><td>Sueldos Redes</td><td class="m">Fijo compartido</td><td class="r" id="cf-redes">—</td></tr>
+        <tr><td>Room</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-room">—</td></tr>
+        <tr><td>Plan General</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-plan1">—</td></tr>
+        <tr><td>Plan 2</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-plan2">—</td></tr>
+        <tr><td>Plan 3</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-plan3">—</td></tr>
+        <tr><td>Gastos Impositivos / Comisiones</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-imp">—</td></tr>
+        <tr><td>Gastos Varios</td><td class="m">Fijo compartido</td><td class="r neg" id="cf-var">—</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="tw"><table><tbody>
+    <tr class="rr"><td>TOTAL COSTOS FIJOS</td><td></td><td class="r" id="cf-total2">—</td></tr>
+    <tr class="rb"><td>RESULTADO OPERATIVO (MC − CF)</td><td></td><td class="r" id="cf-rop2">—</td></tr>
+  </tbody></table></div>
+  <div class="card"><div class="card-hd"><span class="card-title">Composición costos fijos</span></div><div class="card-body"><canvas id="chartCF" height="180"></canvas></div></div>
+</div>
+
+<!-- ══ NO OPERATIVO ══ -->
+<div class="page" id="page-nooperativo">
+  <div class="kpi-row" style="margin-top:24px">
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Resultado Operativo</div><div class="kpi-val info" id="nop-rop">—</div><div class="kpi-sub">Base antes de ajustes</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">Total No Operativo</div><div class="kpi-val neg" id="nop-total">—</div><div class="kpi-sub">Ver detalle</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--green)"></div><div class="kpi-label">Utilidad Neta</div><div class="kpi-val pos" id="nop-neto">—</div><div class="kpi-sub" id="nop-margen">—</div></div>
+  </div>
+  <div class="nb"><div class="nb-label">⚑ Qué es el Resultado No Operativo</div>
+    <div class="nb-text">Incluye cuatro categorías: <strong>(A) movimientos de capital</strong>, <strong>(B) cuotas de deuda</strong>, <strong>(C) gastos extraordinarios y obra</strong>, y <strong>(D) ajuste de período</strong> — costos de febrero pagados con caja de las fechas de marzo y el Torneo. El ajuste de sueldos de febrero es el ítem más relevante.</div>
+  </div>
+  <div class="sh"><span class="sn">4</span><span class="st">Resultado No Operativo — Detalle</span><div class="sl"></div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Concepto</th><th>Tipo</th><th class="r">Total ($ARS)</th></tr></thead>
+    <tbody>
+      <tr class="ghd"><td colspan="3">A — Movimientos de Capital</td></tr>
+      <tr><td>Tomy Perez — Aporte / Préstamo</td><td class="m">Ingreso capital</td><td class="r pos" id="nop-tp-ing">—</td></tr>
+      <tr><td>Tomy Perez — Pago / Devolución</td><td class="m">Egreso capital</td><td class="r neg" id="nop-tp-pag">—</td></tr>
+      <tr class="ghd"><td colspan="3">B — Cuotas de Deuda</td></tr>
+      <tr><td>PMO BBVA</td><td class="m">Cuota deuda</td><td class="r neg" id="nop-pmo">—</td></tr>
+      <tr><td>Elías</td><td class="m">Cuota deuda</td><td class="r" id="nop-elias">—</td></tr>
+      <tr class="ghd"><td colspan="3">C — Movimientos Internos y Extraordinarios</td></tr>
+      <tr><td>Producción (mov. interno)</td><td class="m">Mov. interno</td><td class="r neg" id="nop-prod">—</td></tr>
+      <tr><td>Pago Deuda Escribanía</td><td class="m">Mov. interno</td><td class="r neg" id="nop-escrib">—</td></tr>
+      <tr><td>Extraordinarios</td><td class="m">—</td><td class="r neg" id="nop-ext">—</td></tr>
+      <tr><td>Mantenimiento</td><td class="m">—</td><td class="r neg" id="nop-mant">—</td></tr>
+      <tr><td>Edilicios (obra)</td><td class="m">—</td><td class="r neg" id="nop-obra">—</td></tr>
+      <tr><td>Pago Deuda Juan L</td><td class="m">Deuda por porcentaje</td><td class="r neg" id="nop-juanl">—</td></tr>
+      <tr class="ghd"><td colspan="3">D — Ajuste de Período (costos feb pagados con caja mar + Torneo)</td></tr>
+      <tr><td>Pago CF feb — Sueldos (período anterior)</td><td class="m">Ajuste feb→mar</td><td class="r neg" id="nop-ajsue">—</td></tr>
+      <tr><td>Pago CF feb — Proveedores Varios</td><td class="m">Ajuste feb→mar</td><td class="r neg" id="nop-ajprov">—</td></tr>
+      <tr><td>Pago CF feb — Gastos Servicios</td><td class="m">Ajuste feb→mar</td><td class="r neg" id="nop-ajserv">—</td></tr>
+      <tr class="ghd"><td colspan="3">E — Gastos de Febrero (manual por fecha)</td></tr>
+      <tr><td>Extraordinarios</td><td class="m">Gastos de febrero</td><td class="r neg" id="nop-feb-ext">—</td></tr>
+      <tr><td>Mantenimiento</td><td class="m">Gastos de febrero</td><td class="r neg" id="nop-feb-mant">—</td></tr>
+      <tr><td>Obra</td><td class="m">Gastos de febrero</td><td class="r neg" id="nop-feb-obra">—</td></tr>
+      <tr><td>Cheques Cubiertos Marzo</td><td class="m">Gastos de febrero</td><td class="r neg" id="nop-feb-chq">—</td></tr>
+      <tr class="rr"><td>Total No Operativo</td><td></td><td class="r" id="nop-total2">—</td></tr>
+    </tbody>
+  </table></div>
+  <div class="card"><div class="card-hd"><span class="card-title">Composición no operativo</span></div><div class="card-body"><canvas id="chartNoOp" height="200"></canvas></div></div>
+</div>
+
+<!-- ══ RESULTADO ══ -->
+<div class="page" id="page-resultado">
+  <div class="sh" style="margin-top:24px"><span class="sn green">P&L</span><span class="st">Estado de Resultados Consolidado</span><div class="sl"></div></div>
+  <div class="tw"><table>
+    <thead><tr><th>Concepto</th><th class="r">RB ($ARS)</th><th class="r">LP ($ARS)</th><th class="r">Total ($ARS)</th><th class="r">% Ing.</th></tr></thead>
+    <tbody>
+      <tr class="rg"><td>1. INGRESOS OPERATIVOS</td><td class="r" id="pl-ing-rb">—</td><td class="r" id="pl-ing-lp">—</td><td class="r" id="pl-ing-t">—</td><td class="r pos">100%</td></tr>
+      <tr class="rr"><td>2. COSTOS VARIABLES</td><td class="r" id="pl-cv-rb">—</td><td class="r" id="pl-cv-lp">—</td><td class="r" id="pl-cv-t">—</td><td class="r neg" id="pl-cv-pct">—</td></tr>
+      <tr class="ry"><td>= MARGEN DE CONTRIBUCIÓN</td><td class="r" id="pl-mc-rb">—</td><td class="r" id="pl-mc-lp">—</td><td class="r" id="pl-mc-t">—</td><td class="r warn" id="pl-mc-pct">—</td></tr>
+      <tr class="rr"><td>3. COSTOS FIJOS</td><td class="r" id="pl-cf-rb">—</td><td class="r">—</td><td class="r" id="pl-cf-t">—</td><td class="r neg" id="pl-cf-pct">—</td></tr>
+      <tr class="rb"><td>= RESULTADO OPERATIVO</td><td class="r" id="pl-rop-rb">—</td><td class="r" id="pl-rop-lp">—</td><td class="r" id="pl-rop-t">—</td><td class="r info" id="pl-rop-pct">—</td></tr>
+      <tr class="rr"><td>4. RESULTADO NO OPERATIVO</td><td class="r" colspan="2">—</td><td class="r" id="pl-nop-t">—</td><td class="r neg" id="pl-nop-pct">—</td></tr>
+      <tr class="rg"><td>= UTILIDAD NETA</td><td class="r" colspan="2">—</td><td class="r" id="pl-neto-t">—</td><td class="r pos" id="pl-neto-pct">—</td></tr>
+    </tbody>
+  </table></div>
+  <div class="two-col">
+    <div class="card"><div class="card-hd"><span class="card-title">Cascada completa</span></div><div class="card-body"><canvas id="chartWF2" height="260"></canvas></div></div>
+    <div class="card"><div class="card-hd"><span class="card-title">Análisis de márgenes</span></div><div class="card-body"><div class="bar-list" id="barMargenes"></div></div></div>
+  </div>
+</div>
+
+<!-- ══ STOCK ══ -->
+<div class="page" id="page-stock">
+  <div class="kpi-row" style="margin-top:24px">
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Fecha de Corte</div><div class="kpi-val neu">1° Abril</div><div class="kpi-sub">Stock proyectado</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--green)"></div><div class="kpi-label">Productos OK</div><div class="kpi-val pos" id="stockOK">—</div><div class="kpi-sub">Stock suficiente</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--yellow)"></div><div class="kpi-label">Stock Bajo</div><div class="kpi-val warn" id="stockLow">—</div><div class="kpi-sub">Reponer pronto</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">Sin Stock</div><div class="kpi-val neg" id="stockOut">—</div><div class="kpi-sub">Urgente</div></div>
+    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Valor Total Stock</div><div class="kpi-val info" id="stockTotalVal">—</div><div class="kpi-sub">Costo estimado</div></div>
+  </div>
+  <div class="nb blue"><div class="nb-label blue">📋 Instrucciones</div>
+    <div class="nb-text">Completá <strong>Stock Actual</strong> y <strong>Costo Unit.</strong> por producto. El sistema calcula valor total y estado automáticamente. Ajustá el mínimo según necesidad.</div>
+  </div>
+  <div class="card"><div class="card-hd"><span class="card-title">Inventario al 1° de Abril 2026 — Roca Bruja</span><span class="cbadge badge-ok" id="stockTotalBadge">Total: —</span></div><div id="stockTableContainer"></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-hd"><span class="card-title">Valor de stock por categoría</span></div><div class="card-body"><canvas id="chartStock" height="160"></canvas></div></div>
+</div>
+
+<script>
+// ════════════════════════════════
+// CONFIG
+// ════════════════════════════════
+const SHEET_ID   = '1U-u_O3u6-K22ikKOpLtasjXsjVQrOZIOraMi94sV1OU';
+const SHEET_NAME = 'MARZO_MENSUAL';
+// Cols (0-indexed en la API): A=0, B=1, C=2, D=3, E=4, F=5
+const RB=3, LP=4, TOT=5;
+
+// Mapa label→búsqueda. Para cada fila la API devuelve col B (idx 1) como label.
+// Formato: { elementId: { match: 'fragmento del label', col: índice_columna } }
+const LABEL_MAP = {
+  // ── Ingresos RB por fecha ──
+  'i-rb-06':   {match:'06/03',                    col:RB},
+  'i-rb-06t':  {match:'06/03',                    col:TOT},
+  'i-rb-07':   {match:'07/03',                    col:RB},
+  'i-rb-07t':  {match:'07/03',                    col:TOT},
+  'i-rb-14':   {match:'14/03',                    col:RB},
+  'i-rb-14t':  {match:'14/03',                    col:TOT},
+  'i-rb-21':   {match:'21/03',                    col:RB},
+  'i-rb-21t':  {match:'21/03',                    col:TOT},
+  'i-rb-28':   {match:'28/03',                    col:RB},
+  'i-rb-28t':  {match:'28/03',                    col:TOT},
+  'i-rb-23':   {match:'23/3',                     col:RB},
+  'i-rb-23t':  {match:'23/3',                     col:TOT},
+  'i-rb-fin':  {match:'Financista',               col:TOT},
+  'i-rb-sub':  {match:'Subtotal Ingresos  RB',    col:RB},
+  'i-rb-total':{match:'Subtotal Ingresos  RB',    col:TOT},
+  'i-rb':      {match:'Subtotal Ingresos  RB',    col:TOT},
+  // ── Ingresos LP ──
+  'i-lp-insc': {match:'inscripciones',            col:LP},
+  'i-lp-insct':{match:'inscripciones',            col:TOT},
+  'i-lp-barra':{match:'Ingresos Barra',           col:LP},
+  'i-lp-barrat':{match:'Ingresos Barra',          col:TOT},
+  'i-lp-estac':{match:'Estacionamiento',          col:LP},
+  'i-lp-estact':{match:'Estacionamiento',         col:TOT},
+  'i-lp-com':  {match:'Comisiones MP',            col:LP},
+  'i-lp-comt': {match:'Comisiones MP',            col:TOT},
+  'i-lp-truco':{match:'Truco',                    col:LP},
+  'i-lp-amist':{match:'Amistosos',                col:LP},
+  'i-lp-padel':{match:'Pádel',                    col:LP},
+  'i-lp-padelt':{match:'Pádel',                   col:TOT},
+  'i-lp-sub':  {match:'Subtotal Ingresos  LP',    col:LP},
+  'i-lp-total':{match:'Subtotal Ingresos  LP',    col:TOT},
+  'i-lp':      {match:'Subtotal Ingresos  LP',    col:TOT},
+  // ── Total ingresos ──
+  'i-total':   {match:'TOTAL INGRESOS OPERATIVOS',col:TOT},
+  'i-total2':  {match:'TOTAL INGRESOS OPERATIVOS',col:RB},
+  'i-total3':  {match:'TOTAL INGRESOS OPERATIVOS',col:TOT},
+  // ── CV RB ──
+  'cv-rb-cmv': {match:'Mercadería Vendida',       col:RB},
+  'cv-rb-dj1': {match:'DJ / Artísticos',          col:RB},
+  'cv-rb-dj2': {match:'DJ Electrónica',           col:RB},
+  'cv-rb-pub1':{match:'Públicas Sabado',          col:RB},
+  'cv-rb-pub2':{match:'Públicas Viernes',         col:RB},
+  'cv-rb-pub3':{match:'Publicas Master',          col:RB},
+  'cv-rb-cond':{match:'Condimentos',              col:RB},
+  'cv-rb-com1':{match:'Comision Juan',            col:RB},
+  'cv-rb-com2':{match:'Comision Santi',           col:RB},
+  'cv-rb-com3':{match:'Comision Toto',            col:RB},
+  'cv-rb-sub': {match:'Subtotal CV  RB',          col:RB},
+  'cv-rb-sub2':{match:'Subtotal CV  RB',          col:RB},
+  'cv-rb':     {match:'Subtotal CV  RB',          col:RB},
+  // ── CV LP ──
+  'cv-lp-per': {match:'Personal',                 col:LP},
+  'cv-lp-merc':{match:'Mercadería e Insumos',     col:LP},
+  'cv-lp-var': {match:'Gastos Varios',            col:LP, after:'LOS PASTOS'},
+  'cv-lp-film':{match:'Filmaker',                 col:LP},
+  'cv-lp-sub': {match:'Subtotal CV  LP',          col:LP},
+  'cv-lp-sub2':{match:'Subtotal CV  LP',          col:LP},
+  'cv-lp':     {match:'Subtotal CV  LP',          col:LP},
+  // ── CV totales ──
+  'cv-total':  {match:'TOTAL COSTOS VARIABLES',   col:TOT},
+  'cv-total2': {match:'TOTAL COSTOS VARIABLES',   col:RB},
+  'cv-total3': {match:'TOTAL COSTOS VARIABLES',   col:TOT},
+  'cv-mc':     {match:'MARGEN DE CONTRIBUCIÓN',   col:TOT},
+  'cv-mc2':    {match:'MARGEN DE CONTRIBUCIÓN',   col:RB},
+  'cv-mc3':    {match:'MARGEN DE CONTRIBUCIÓN',   col:TOT},
+  // ── CF ──
+  'cf-sue1':   {match:'Sueldos Producción',       col:RB},
+  'cf-sue2':   {match:'Sueldos Op / Adm',         col:RB},
+  'cf-even':   {match:'Empleados Eventuales',     col:RB},
+  'cf-cont':   {match:'Contadora',                col:RB},
+  'cf-seg':    {match:'Seguro',                   col:RB},
+  'cf-edil':   {match:'Edilicio',                 col:RB, skipFirst:'Edilicios'},
+  'cf-serv':   {match:'Gastos Servicios',         col:RB},
+  'cf-mant':   {match:'Gastos Mantenimiento',     col:RB},
+  'cf-prov':   {match:'Proveedores Varios',       col:RB},
+  'cf-redes':  {match:'Sueldos Redes',            col:RB},
+  'cf-room':   {match:'Room',                     col:RB},
+  'cf-plan1':  {match:'Plan General',             col:RB},
+  'cf-plan2':  {match:'Plan 2',                   col:RB},
+  'cf-plan3':  {match:'Plan 3',                   col:RB},
+  'cf-imp':    {match:'Gastos Impositivos',       col:RB},
+  'cf-var':    {match:'Gastos Varios',            col:RB, after:'COSTOS FIJOS'},
+  'cf-total':  {match:'TOTAL COSTOS FIJOS',       col:TOT},
+  'cf-total2': {match:'TOTAL COSTOS FIJOS',       col:RB},
+  'cf-rop':    {match:'RESULTADO OPERATIVO',      col:TOT},
+  'cf-rop2':   {match:'RESULTADO OPERATIVO',      col:TOT},
+  'cf-rop-sub':{match:'RESULTADO OPERATIVO',      col:RB},
+  'k-rop':     {match:'RESULTADO OPERATIVO',      col:TOT},
+  // ── No operativo ──
+  'nop-tp-ing':{match:'Aporte / Préstamo',        col:TOT},
+  'nop-tp-pag':{match:'Pago / Devolución',        col:TOT},
+  'nop-pmo':   {match:'PMO BBVA',                 col:TOT},
+  'nop-elias': {match:'Elías',                    col:TOT},
+  'nop-prod':  {match:'Producción (mov',          col:TOT},
+  'nop-escrib':{match:'Escribanía',               col:TOT},
+  'nop-ext':   {match:'Extraordinarios',          col:TOT, nth:1},
+  'nop-mant':  {match:'Mantenimiento',            col:TOT, nth:1},
+  'nop-obra':  {match:'Edilicios (obra)',         col:TOT},
+  'nop-juanl': {match:'Deuda Juan L',             col:TOT},
+  'nop-ajsue': {match:'Sueldos (período anterior)',col:TOT},
+  'nop-ajprov':{match:'Proveedores Varios',       col:TOT, nth:2},
+  'nop-ajserv':{match:'Gastos Servicios',         col:TOT, nth:2},
+  'nop-feb-ext':{match:'Extraordinarios',         col:TOT, nth:2},
+  'nop-feb-mant':{match:'Mantenimiento',          col:TOT, nth:2},
+  'nop-feb-obra':{match:'Obra',                   col:TOT, nth:1},
+  'nop-feb-chq':{match:'Cheques Cubiertos',       col:TOT},
+  'nop-total': {match:'Total No Operativo',       col:TOT},
+  'nop-total2':{match:'Total No Operativo',       col:TOT},
+  // ── Utilidad ──
+  'k-neto':    {match:'UTILIDAD NETA',            col:TOT},
+};
+
+// ════════════════════════════════
+// Helpers
+// ════════════════════════════════
+const RED='#dc2626',GREEN='#16a34a',YELLOW='#d97706',BLUE='#2563eb',ORANGE='#ea580c',MUTED='#9ca3af';
+const fmt  = n => n==null||n===''||n===0 ? '—' : '$'+Math.round(Math.abs(n)).toLocaleString('es-AR');
+const fmtM = n => n==null||n===''||n===0 ? '—' : '$'+(Math.abs(n)/1e6).toFixed(1)+'M';
+const fmtP = (n,d) => d&&d!==0 ? (Math.abs(n)/Math.abs(d)*100).toFixed(1)+'%' : '—';
+const base={responsive:true,plugins:{
+  legend:{labels:{color:'#374151',font:{family:"'IBM Plex Mono'",size:10},boxWidth:10}},
+  tooltip:{backgroundColor:'#1f2937',titleColor:'#f9fafb',bodyColor:'#d1d5db',
+    titleFont:{family:"'IBM Plex Mono'",size:10},bodyFont:{family:"'IBM Plex Mono'",size:9},padding:8,cornerRadius:4}
+}};
+const sc={
+  x:{grid:{color:'#f3f4f6'},ticks:{color:MUTED,font:{family:"'IBM Plex Mono'",size:9}}},
+  y:{grid:{color:'#f3f4f6'},ticks:{color:MUTED,font:{family:"'IBM Plex Mono'",size:9},callback:v=>fmtM(v)}}
+};
+
+let charts = {};
+function makeChart(id,type,data,opts){
+  if(charts[id]) charts[id].destroy();
+  const ctx=document.getElementById(id);
+  if(!ctx) return;
+  charts[id]=new Chart(ctx,{type,data,options:{...base,...opts}});
+}
+
+function setEl(id, val, formatter){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const v = (formatter||fmt)(val);
+  el.textContent = v;
+}
+
+
+// ════════════════════════════════
+// DATA LOADING — label-based lookup
+// ════════════════════════════════
+let _ROWS = [];
+
+function loadData(){
+  const badge = document.getElementById('sync-badge');
+  badge.innerHTML = '<div class="live-dot" style="background:#d97706"></div>Actualizando...';
+  badge.className = 'error-badge'; badge.style.color='#d97706';
+
+  // Remove previous JSONP script if exists
+  const old = document.getElementById('gviz-script');
+  if(old) old.remove();
+
+  // JSONP callback — avoids CORS when abrís el archivo localmente
+  const cbName = 'gvizCallback_' + Date.now();
+  window[cbName] = function(json){
+    try {
+      _ROWS = json.table.rows.map((row,ri)=>({
+        ri,
+        label: row.c&&row.c[1]&&row.c[1].v ? row.c[1].v.toString().trim() : '',
+        c: row.c || []
+      }));
+      renderAll();
+      badge.innerHTML = '<div class="live-dot"></div>En vivo · ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      badge.className = 'live-badge'; badge.style.color='';
+    } catch(e) {
+      badge.innerHTML = '⚠ Error al procesar datos';
+      badge.className = 'error-badge';
+      renderStatic();
+    }
+    delete window[cbName];
+    document.getElementById('loading-overlay').classList.add('hidden');
+  };
+
+  // Timeout fallback — si no responde en 8s usa datos estáticos
+  const timeout = setTimeout(()=>{
+    if(window[cbName]){
+      delete window[cbName];
+      badge.innerHTML = '⚠ Sin conexión — datos estáticos';
+      badge.className = 'error-badge';
+      renderStatic();
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+  }, 8000);
+
+  const script = document.createElement('script');
+  script.id = 'gviz-script';
+  script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&callback=${cbName}&sheet=${encodeURIComponent(SHEET_NAME)}&_=${Date.now()}`;
+  script.onerror = ()=>{
+    clearTimeout(timeout);
+    delete window[cbName];
+    badge.innerHTML = '⚠ Error de red';
+    badge.className = 'error-badge';
+    renderStatic();
+    document.getElementById('loading-overlay').classList.add('hidden');
+  };
+  document.head.appendChild(script);
+}
+
+function findVal(match, col, nth){
+  nth = nth||0;
+  let count=0;
+  for(let i=0;i<_ROWS.length;i++){
+    if(_ROWS[i].label.toLowerCase().includes(match.toLowerCase())){
+      if(count===nth){
+        const cell=_ROWS[i].c[col];
+        return cell?(cell.v!==null&&cell.v!==undefined?cell.v:null):null;
+      }
+      count++;
+    }
+  }
+  return null;
+}
+
+function renderAll(){
+  Object.entries(LABEL_MAP).forEach(([id,cfg])=>{
+    const el=document.getElementById(id); if(!el)return;
+    const v=findVal(cfg.match,cfg.col,cfg.nth);
+    el.textContent=(v===null||v===0||v==='')?'—':fmt(v);
+  });
+
+  const ing  =findVal('TOTAL INGRESOS OPERATIVOS',TOT);
+  const cv   =findVal('TOTAL COSTOS VARIABLES',   TOT);
+  const mc   =findVal('MARGEN DE CONTRIBUCIÓN',   TOT);
+  const cf   =findVal('TOTAL COSTOS FIJOS',       RB)||findVal('TOTAL COSTOS FIJOS',TOT);
+  const rop  =findVal('RESULTADO OPERATIVO',      TOT);
+  const nop  =findVal('Total No Operativo',       TOT);
+  const neto =findVal('UTILIDAD NETA',            TOT);
+  const rbIng=findVal('Subtotal Ingresos  RB',    TOT);
+  const lpIng=findVal('Subtotal Ingresos  LP',    TOT);
+  const cvRB =findVal('Subtotal CV  RB',          RB);
+  const cvLP =findVal('Subtotal CV  LP',          LP);
+  const mcRB =findVal('MARGEN DE CONTRIBUCIÓN',   RB);
+  const mcLP =findVal('MARGEN DE CONTRIBUCIÓN',   LP);
+  const rbROP=findVal('RESULTADO OPERATIVO',      RB);
+  const lpROP=findVal('RESULTADO OPERATIVO',      LP);
+
+  setEl('hkpi-ing',ing,fmtM); setEl('hkpi-op',rop,fmtM); setEl('hkpi-neto',neto,fmtM);
+  document.getElementById('hkpi-margen').textContent=ing?fmtP(neto,ing):'—';
+  document.getElementById('hdr-periodo').textContent='Marzo 2026';
+
+  setEl('k-ing',ing,fmtM); setEl('k-cv',cv,fmtM); setEl('k-mc',mc,fmtM);
+  setEl('k-cf',cf,fmtM);   setEl('k-rop',rop,fmtM); setEl('k-nop',nop,fmtM); setEl('k-neto',neto,fmtM);
+  document.getElementById('k-ing-sub').textContent =`RB ${fmtM(rbIng)} · LP ${fmtM(lpIng)}`;
+  document.getElementById('k-cv-sub').textContent  =`RB ${fmtM(cvRB)} · LP ${fmtM(cvLP)}`;
+  document.getElementById('k-mc-sub').textContent  =ing?fmtP(mc,ing)+' MC':'—';
+  document.getElementById('k-rop-sub').textContent =ing?'Margen '+fmtP(rop,ing):'—';
+  document.getElementById('k-neto-sub').textContent=ing?'Margen neto '+fmtP(neto,ing):'—';
+  document.getElementById('donut-label').textContent=`RB ${fmtP(rbIng,ing)} · LP ${fmtP(lpIng,ing)}`;
+
+  setEl('i-rb',rbIng,fmtM); setEl('i-lp',lpIng,fmtM); setEl('i-total',ing,fmtM);
+  setEl('i-lp-insc-txt',findVal('inscripciones',TOT),fmtM);
+
+  setEl('cv-rb',cvRB,fmtM); setEl('cv-lp',cvLP,fmtM); setEl('cv-total',cv,fmtM); setEl('cv-mc',mc,fmtM);
+  document.getElementById('cv-rb-sub').textContent=rbIng?fmtP(cvRB,rbIng)+' sobre ing. RB':'—';
+  document.getElementById('cv-lp-sub').textContent=lpIng?fmtP(cvLP,lpIng)+' sobre ing. LP':'—';
+  document.getElementById('cv-mc-sub').textContent=ing?fmtP(mc,ing)+' MC':'—';
+  document.getElementById('cv-cmv-txt').textContent=fmt(findVal('Mercadería Vendida',RB));
+
+  setEl('cf-total',cf,fmtM); setEl('cf-rop',rop,fmtM); setEl('cf-total2',cf,fmtM); setEl('cf-rop2',rop,fmtM);
+  document.getElementById('cf-pct').textContent    =ing?fmtP(cf,ing):'—';
+  document.getElementById('cf-rop-sub').textContent=ing?'Margen '+fmtP(rop,ing):'—';
+
+  setEl('nop-rop',rop,fmtM); setEl('nop-total',nop,fmtM); setEl('nop-neto',neto,fmtM); setEl('nop-total2',nop,fmtM);
+  document.getElementById('nop-margen').textContent=ing?'Margen neto '+fmtP(neto,ing):'—';
+
+  setEl('pl-ing-rb',rbIng,fmtM); setEl('pl-ing-lp',lpIng,fmtM); setEl('pl-ing-t',ing,fmtM);
+  setEl('pl-cv-rb',cvRB,fmtM);   setEl('pl-cv-lp',cvLP,fmtM);   setEl('pl-cv-t',cv,fmtM);
+  setEl('pl-mc-rb',mcRB,fmtM);   setEl('pl-mc-lp',mcLP,fmtM);   setEl('pl-mc-t',mc,fmtM);
+  setEl('pl-cf-rb',cf,fmtM);                                     setEl('pl-cf-t',cf,fmtM);
+  setEl('pl-rop-rb',rbROP,fmtM); setEl('pl-rop-lp',lpROP,fmtM); setEl('pl-rop-t',rop,fmtM);
+  setEl('pl-nop-t',nop,fmtM);    setEl('pl-neto-t',neto,fmtM);
+  if(ing){
+    document.getElementById('pl-cv-pct').textContent =fmtP(cv,ing);
+    document.getElementById('pl-mc-pct').textContent =fmtP(mc,ing);
+    document.getElementById('pl-cf-pct').textContent =fmtP(cf,ing);
+    document.getElementById('pl-rop-pct').textContent=fmtP(rop,ing);
+    document.getElementById('pl-nop-pct').textContent='-'+fmtP(nop,ing);
+    document.getElementById('pl-neto-pct').textContent=fmtP(neto,ing);
+  }
+
+  setEl('rec-neto',neto,fmt);
+  document.getElementById('rec-neto-txt').textContent=neto?fmt(neto):'—';
+  window._netoLive=neto;
+  recalcRecon();
+  renderCharts(ing,cv,mc,cf,rop,nop,neto,rbIng,lpIng,cvRB,cvLP);
+}
+
+// Static fallback (same numbers as before, shown if API fails)
+function renderStatic(){
+  const data={ing:260046263,cv:52523427,mc:207522837,cf:37761064,rop:169761773,nop:130072800,neto:39688973,rbIng:200342465,lpIng:99703798,cvRB:27070096,cvLP:25453331};
+  D={};
+  // Inject static values for key cells
+  const statics={
+    '23_6':data.ing,'13_6':data.rbIng,'22_6':data.lpIng,
+    '44_6':data.cv,'37_4':data.cvRB,'43_5':data.cvLP,
+    '45_6':data.mc,'65_4':data.cf,'67_6':data.rop,'89_6':-data.nop,'91_6':data.neto,
+    '6_4':41195000,'7_4':74264850,'8_4':44882615,
+    '15_5':82236408,'15_6':82236408,'16_5':11991500,'16_6':11991500,
+    '17_5':2810000,'17_6':2810000,'18_5':2625890,'18_6':2625890,
+    '21_5':40000,'21_6':40000,
+    '27_4':21200096,'28_4':2350000,'29_4':3520000,
+    '39_5':16263800,'40_5':6457531,'42_5':2732000,
+    '51_4':19429500,'57_4':6995080,'53_4':2388141,'54_4':2179928,'55_4':1525461,
+    '64_4':2675000,'60_4':460150,'61_4':427251,
+    '71_6':40000000,'72_6':-37000000,'73_6':-5584844,
+    '75_6':-2559400,'76_6':-1995000,'77_6':-12470373,'78_6':-3712744,
+    '79_6':-2179928,'80_6':-5943000,
+    '82_6':-45957428,'83_6':-279425,'84_6':-1487463,
+    '85_6':-5625500,'86_6':-1385500,'87_6':-15358000,'88_6':-28534196,
+  };
+  Object.entries(statics).forEach(([k,v])=>{D[k]=v});
+  renderAll();
+}
+
+function recalcRecon(){
+  const neto = window._netoLive || 39688973;
+  const merch = +document.getElementById('merch-input').value || 0;
+  const lp = 11000000;
+  const caja = neto - lp - merch;
+  const gap = lp + merch;
+  document.getElementById('rec-caja').textContent = fmt(caja);
+  document.getElementById('rec-gap').textContent  = '('+fmt(gap)+')';
+  document.getElementById('rec-caja').className = caja>=0?'r warn':'r neg';
+}
+
+// ── STOCK TABLE ──
+const stockData=[
+  {cat:'Bebidas Alcohólicas',items:[
+    {name:'Fernet Branca 950ml',unit:'bot',stock:0,min:12,costo:0},
+    {name:'Vodka Absolut',unit:'bot',stock:0,min:6,costo:0},
+    {name:'Whisky Jameson',unit:'bot',stock:0,min:6,costo:0},
+    {name:'Whisky Jameson 8 Años',unit:'bot',stock:0,min:4,costo:0},
+    {name:'Chivas 12 Años',unit:'bot',stock:0,min:4,costo:0},
+    {name:'Chivas 18 Años',unit:'bot',stock:0,min:2,costo:0},
+    {name:'Gin Beefeater',unit:'bot',stock:0,min:4,costo:0},
+    {name:'Ron Bacardi',unit:'bot',stock:0,min:4,costo:0},
+    {name:'Aperol',unit:'bot',stock:0,min:4,costo:0},
+    {name:'Chandon Brut',unit:'bot',stock:0,min:12,costo:0},
+  ]},
+  {cat:'Bebidas Sin Alcohol',items:[
+    {name:'Agua 500ml',unit:'caja',stock:0,min:10,costo:0},
+    {name:'Speed Energy',unit:'caja',stock:0,min:10,costo:0},
+    {name:'Gaseosas (mix)',unit:'caja',stock:0,min:8,costo:0},
+    {name:'Tónica Schweppes',unit:'caja',stock:0,min:4,costo:0},
+    {name:'Jugo Tang polvo',unit:'kg',stock:0,min:2,costo:0},
+  ]},
+  {cat:'Insumos Barra',items:[
+    {name:'Hielo (bolsas 5kg)',unit:'bolsa',stock:0,min:30,costo:0},
+    {name:'Limones',unit:'kg',stock:0,min:5,costo:0},
+    {name:'Vasos descartables',unit:'paq',stock:0,min:5,costo:0},
+    {name:'Servilletas',unit:'paq',stock:0,min:10,costo:0},
+    {name:'Pajitas',unit:'paq',stock:0,min:5,costo:0},
+  ]},
+];
+function buildStockTable(){
+  let html='<div class="stock-hd"><div class="sc hd">Producto</div><div class="sc hd r">Unidad</div><div class="sc hd r">Stock Actual</div><div class="sc hd r">Mínimo</div><div class="sc hd r">Costo Unit. ($)</div><div class="sc hd r">Valor Total</div></div>';
+  stockData.forEach((cat,ci)=>{
+    html+=`<div class="sghd">${cat.cat}</div>`;
+    cat.items.forEach((item,ii)=>{
+      html+=`<div class="stock-row" id="srow_${ci}_${ii}">
+        <div class="sc">${item.name}</div>
+        <div class="sc r" style="color:var(--light);font-size:10px">${item.unit}</div>
+        <div class="sc r"><input class="si" type="number" id="sq_${ci}_${ii}" value="0" min="0" oninput="sRecalc(${ci},${ii})" placeholder="0"></div>
+        <div class="sc r"><input class="si" type="number" id="sm_${ci}_${ii}" value="${item.min}" min="0" oninput="sRecalc(${ci},${ii})" placeholder="0"></div>
+        <div class="sc r"><input class="si" type="number" id="sc_${ci}_${ii}" value="0" min="0" oninput="sRecalc(${ci},${ii})" placeholder="0"></div>
+        <div class="sc r" id="sv_${ci}_${ii}" style="font-family:var(--mono);font-size:11px">—</div>
+      </div>`;
+    });
+  });
+  document.getElementById('stockTableContainer').innerHTML=html;
+  sRecalcAll();
+}
+function sRecalc(ci,ii){
+  const q=+document.getElementById(`sq_${ci}_${ii}`).value||0;
+  const m=+document.getElementById(`sm_${ci}_${ii}`).value||0;
+  const c=+document.getElementById(`sc_${ci}_${ii}`).value||0;
+  const total=q*c;
+  const el=document.getElementById(`sv_${ci}_${ii}`);
+  el.textContent=total>0?'$'+total.toLocaleString('es-AR'):'—';
+  const row=document.getElementById(`srow_${ci}_${ii}`);
+  row.style.background='';el.style.color='';
+  if(q===0&&m>0){row.style.background='#fef2f2';el.style.color=RED;}
+  else if(q<m){row.style.background='#fffbeb';el.style.color=YELLOW;}
+  else{el.style.color=GREEN;}
+  sRecalcSummary();sUpdateChart();
+}
+function sRecalcAll(){stockData.forEach((_,ci)=>_.items.forEach((__,ii)=>sRecalc(ci,ii)));}
+function sRecalcSummary(){
+  let ok=0,low=0,out=0,tot=0;
+  stockData.forEach((_,ci)=>_.items.forEach((__,ii)=>{
+    const q=+document.getElementById(`sq_${ci}_${ii}`).value||0;
+    const m=+document.getElementById(`sm_${ci}_${ii}`).value||0;
+    const c=+document.getElementById(`sc_${ci}_${ii}`).value||0;
+    tot+=q*c;
+    if(q===0&&m>0)out++;else if(q<m)low++;else ok++;
+  }));
+  document.getElementById('stockOK').textContent=ok;
+  document.getElementById('stockLow').textContent=low;
+  document.getElementById('stockOut').textContent=out;
+  document.getElementById('stockTotalVal').textContent='$'+tot.toLocaleString('es-AR');
+  document.getElementById('stockTotalBadge').textContent='Total: $'+tot.toLocaleString('es-AR');
+}
+let stockChart=null;
+function sUpdateChart(){
+  const vals=stockData.map((_,ci)=>_.items.reduce((a,__,ii)=>{
+    const q=+document.getElementById(`sq_${ci}_${ii}`).value||0;
+    const c=+document.getElementById(`sc_${ci}_${ii}`).value||0;
+    return a+q*c;
+  },0));
+  if(stockChart){stockChart.data.datasets[0].data=vals;stockChart.update();return;}
+  stockChart=new Chart(document.getElementById('chartStock'),{type:'bar',
+    data:{labels:stockData.map(c=>c.cat),datasets:[{label:'Valor ($)',data:vals,backgroundColor:[GREEN+'22',BLUE+'22',ORANGE+'22'],borderColor:[GREEN,BLUE,ORANGE],borderWidth:2,borderRadius:4}]},
+    options:{...base,plugins:{...base.plugins,legend:{display:false}},scales:{x:sc.x,y:{...sc.y,ticks:{...sc.y.ticks,callback:v=>'$'+v.toLocaleString('es-AR')}}}}
+  });
+}
+buildStockTable();
+
+function go(id,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// Auto-refresh cada 5 minutos
+loadData();
+setInterval(loadData, 5*60*1000);
+</script>
+</body>
 </html>
